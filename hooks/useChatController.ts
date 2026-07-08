@@ -5,6 +5,11 @@ import { WELCOME_MESSAGE } from "@/lib/chat/constants";
 import type { ChatMessage, ChatPanelState, ChatStatus } from "@/lib/chat/types";
 import type { SourceCitation } from "@/lib/rag/types";
 
+// Caps how many messages the client keeps in memory/renders during a long
+// demo session. Not a Claude context limit — each question is stateless
+// server-side regardless of this cap.
+const MAX_MESSAGES = 50;
+
 export interface ChatReply {
   text: string;
   grounded: boolean;
@@ -34,6 +39,14 @@ function nextMessageId(prefix: string): string {
   return `${prefix}-${messageCounter}`;
 }
 
+function appendMessage(messages: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  const next = [...messages, message];
+  if (next.length <= MAX_MESSAGES) return next;
+  // Keep the welcome message plus the most recent messages, so a long
+  // session doesn't grow the render/memory footprint without bound.
+  return [next[0], ...next.slice(next.length - (MAX_MESSAGES - 1))];
+}
+
 interface UseChatControllerOptions {
   replyFn?: ReplyFn;
 }
@@ -43,6 +56,9 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [status, setStatus] = useState<ChatStatus>("idle");
   const pendingTextRef = useRef<string | null>(null);
+  // Synchronous lock — React state updates batch, so relying on `status`
+  // alone can't prevent two sends fired in the same tick.
+  const isSendingRef = useRef(false);
 
   const open = useCallback(() => setPanelState("open"), []);
   const minimize = useCallback(() => setPanelState("minimized"), []);
@@ -59,20 +75,21 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
       setStatus("loading");
       try {
         const reply = await replyFn(text);
-        setMessages((prev) => [
-          ...prev,
-          {
+        setMessages((prev) =>
+          appendMessage(prev, {
             id: nextMessageId("assistant"),
             role: "assistant",
             text: reply.text,
             grounded: reply.grounded,
             sources: reply.sources,
-          },
-        ]);
+          })
+        );
         setStatus("idle");
         pendingTextRef.current = null;
       } catch {
         setStatus("error");
+      } finally {
+        isSendingRef.current = false;
       }
     },
     [replyFn]
@@ -81,18 +98,20 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
   const sendText = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || status === "loading") return;
+      if (!trimmed || isSendingRef.current) return;
+      isSendingRef.current = true;
 
       pendingTextRef.current = trimmed;
-      setMessages((prev) => [...prev, { id: nextMessageId("user"), role: "user", text: trimmed }]);
+      setMessages((prev) => appendMessage(prev, { id: nextMessageId("user"), role: "user", text: trimmed }));
       void attemptReply(trimmed);
     },
-    [attemptReply, status]
+    [attemptReply]
   );
 
   const retry = useCallback(() => {
     const pending = pendingTextRef.current;
-    if (!pending) return;
+    if (!pending || isSendingRef.current) return;
+    isSendingRef.current = true;
     void attemptReply(pending);
   }, [attemptReply]);
 
