@@ -1,76 +1,153 @@
-interface SummaryCardProps {
-  title: string;
-  value: string;
-}
+import { LandingFooter } from "./LandingFooter";
+import { LandingHeader } from "./LandingHeader";
 
-function SummaryCard({ title, value }: SummaryCardProps) {
-  return (
-    <div className="rounded-2xl border border-neutral-200 p-4 dark:border-neutral-700">
-      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{title}</h3>
-      <p className="mt-1 text-xl font-semibold">{value}</p>
-    </div>
-  );
-}
+const FEATURES = [
+  {
+    icon: "bi-box-seam",
+    title: "Inventory",
+    description: "Track products, stock levels, and low-stock alerts in real time.",
+  },
+  {
+    icon: "bi-cart-check",
+    title: "Sales & POS",
+    description:
+      "Ring up sales, take payments, and keep a clean order history, included free on every plan.",
+  },
+  {
+    icon: "bi-truck",
+    title: "Suppliers",
+    description: "Manage vendors and contacts, and restock with confidence.",
+  },
+  {
+    icon: "bi-graph-up-arrow",
+    title: "Reports",
+    description: "See revenue, top sellers, and stock health at a glance.",
+  },
+] as const;
+
+const STATS = [
+  { value: "4-in-1", label: "All-in-one toolkit" },
+  { value: "EN · ES", label: "Fully bilingual" },
+  { value: "$0", label: "Free to start" },
+  { value: "30-day", label: "Free Pro trial" },
+] as const;
 
 export function ScoreDashboard() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6 sm:p-10">
-      <header className="flex flex-col gap-3">
-        <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-          Demonstration
-        </span>
-        <h1 className="text-3xl font-bold">S.C.O.R.E.</h1>
-        <p className="max-w-2xl text-neutral-600 dark:text-neutral-300">
-          S.C.O.R.E. (Small Company Operations &amp; Resource Engine) is a simple, all-in-one
-          workspace for small businesses. Keep track of what you have, ring up sales, remember
-          your customers, and see how business is going, all in one place.
-        </p>
-      </header>
+    <div className="flex min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <LandingHeader />
 
-      <section aria-label="Business summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard title="Inventory" value="128 items tracked" />
-        <SummaryCard title="Sales" value="$1,240 this week" />
-        <SummaryCard title="Customers" value="42 customers" />
-        <SummaryCard title="Reports" value="4 reports available" />
-      </section>
+      <main className="flex-1">
+        <section className="relative isolate overflow-hidden">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-[url('/image_landing.jpg')] bg-cover bg-center"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/70 to-slate-950/55"
+          />
 
-      <section
-        aria-labelledby="low-stock-heading"
-        className="rounded-2xl border border-neutral-200 p-5 dark:border-neutral-700"
-      >
-        <h2 id="low-stock-heading" className="text-lg font-semibold">
-          Low stock example
-        </h2>
-        <ul className="mt-3 divide-y divide-neutral-200 dark:divide-neutral-700">
-          <li className="flex items-center justify-between py-2 text-sm">
-            <span>Canvas tote bags</span>
-            <span className="font-medium text-red-600 dark:text-red-400">3 left</span>
-          </li>
-          <li className="flex items-center justify-between py-2 text-sm">
-            <span>Hand-poured candles</span>
-            <span className="font-medium text-red-600 dark:text-red-400">5 left</span>
-          </li>
-        </ul>
-      </section>
+          <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-28 text-center sm:py-36">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cerulean-300">
+              Small business toolkit
+            </p>
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-balance text-white sm:text-5xl lg:text-[3.5rem] lg:leading-[1.05]">
+              Run your whole small business in one place
+            </h1>
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-pretty text-slate-200">
+              SCORE helps small businesses manage inventory, sales, suppliers, and reports,
+              simple, fast, and built to grow with you.
+            </p>
 
-      <section
-        aria-labelledby="recent-activity-heading"
-        className="rounded-2xl border border-neutral-200 p-5 dark:border-neutral-700"
-      >
-        <h2 id="recent-activity-heading" className="text-lg font-semibold">
-          Recent activity example
-        </h2>
-        <ul className="mt-3 divide-y divide-neutral-200 dark:divide-neutral-700">
-          <li className="py-2 text-sm">Sold 2 candles to Maria G.</li>
-          <li className="py-2 text-sm">Added 20 tote bags to inventory</li>
-          <li className="py-2 text-sm">Updated contact info for Carlos R.</li>
-        </ul>
-      </section>
+            <div className="mt-10 flex flex-col items-center justify-center gap-x-6 gap-y-4 sm:flex-row">
+              <button className="btn-primary px-6 py-3 text-base" type="button">
+                Start Free Trial
+              </button>
+              <button
+                className="group inline-flex items-center gap-1.5 text-base font-medium text-white/85 transition hover:text-white"
+                type="button"
+              >
+                See All Plans
+                <i
+                  aria-hidden="true"
+                  className="bi bi-arrow-right text-sm transition group-hover:translate-x-0.5"
+                />
+              </button>
+            </div>
 
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-        Everything on this page is example demonstration data. No real business information is
-        shown or stored.
-      </p>
+            <p className="mt-8 text-sm text-white/60">
+              30-day free trial · No credit card · Cancel anytime
+            </p>
+          </div>
+        </section>
+
+        <section className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/40">
+          <dl className="mx-auto grid max-w-5xl grid-cols-2 divide-x divide-y divide-slate-200 sm:grid-cols-4 sm:divide-y-0 dark:divide-slate-800">
+            {STATS.map((stat) => (
+              <div className="px-6 py-8 text-center" key={stat.label}>
+                <dd className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+                  {stat.value}
+                </dd>
+                <dt className="mt-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {stat.label}
+                </dt>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section id="features">
+          <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+            <div className="mx-auto max-w-xl text-center">
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Everything you need to run the shop
+              </h2>
+              <p className="mt-3 text-pretty text-slate-500 dark:text-slate-400">
+                Four tools that work together, no spreadsheets, no juggling apps.
+              </p>
+            </div>
+
+            <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {FEATURES.map((feature) => (
+                <div
+                  className="surface-card p-6 transition duration-200 hover:border-slate-300 dark:hover:border-slate-700"
+                  key={feature.title}
+                >
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-cerulean-50 text-cerulean-600 dark:bg-cerulean-950/50 dark:text-cerulean-400">
+                    <i aria-hidden="true" className={`bi ${feature.icon} text-xl leading-none`} />
+                  </span>
+                  <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                    {feature.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/40"
+          id="contact"
+        >
+          <div className="mx-auto max-w-2xl px-6 py-20 text-center sm:py-24">
+            <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+              Ready to run your business smarter?
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-pretty text-slate-500 dark:text-slate-400">
+              Start free in minutes, upgrade to Pro when you&apos;re ready to grow.
+            </p>
+            <button className="btn-primary mt-8 px-6 py-3 text-base" type="button">
+              Start Free Trial
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <LandingFooter />
     </div>
   );
 }

@@ -6,10 +6,10 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ onMinimize, onClose, onRestart }: ChatHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-2xl bg-blue-600 px-4 py-3 text-white sm:rounded-t-2xl">
+    <div className="flex items-center justify-between gap-2 rounded-t-2xl bg-cerulean-600 px-4 py-3 text-white sm:rounded-t-2xl">
       <div>
         <h2 className="text-base font-semibold">S.C.O.R.E. Guide</h2>
-        <p className="text-xs text-blue-100">Here to help you get started</p>
+        <p className="text-xs text-cerulean-100">Here to help you get started</p>
       </div>
       <div className="flex items-center gap-1">
         <button
