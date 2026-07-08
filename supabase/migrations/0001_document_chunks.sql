@@ -37,6 +37,7 @@ returns table (
   title text,
   chunk_index int,
   content text,
+  token_count int,
   similarity float
 )
 language sql stable
@@ -48,6 +49,7 @@ as $$
     d.title,
     d.chunk_index,
     d.content,
+    d.token_count,
     1 - (d.embedding <=> query_embedding) as similarity
   from document_chunks d
   where 1 - (d.embedding <=> query_embedding) > match_threshold
