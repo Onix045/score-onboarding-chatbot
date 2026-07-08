@@ -2,16 +2,30 @@
 
 import { useCallback, useRef, useState } from "react";
 import { WELCOME_MESSAGE } from "@/lib/chat/constants";
-import { getMockReplyText } from "@/lib/chat/mockResponses";
 import type { ChatMessage, ChatPanelState, ChatStatus } from "@/lib/chat/types";
+import type { SourceCitation } from "@/lib/rag/types";
 
-const MOCK_REPLY_DELAY_MS = 400;
+export interface ChatReply {
+  text: string;
+  grounded: boolean;
+  sources: SourceCitation[];
+}
 
-export type ReplyFn = (userText: string) => Promise<string>;
+export type ReplyFn = (userText: string) => Promise<ChatReply>;
 
-async function defaultReplyFn(userText: string): Promise<string> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_REPLY_DELAY_MS));
-  return getMockReplyText(userText);
+async function defaultReplyFn(userText: string): Promise<ChatReply> {
+  const response = await fetch("/api/support", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: userText }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Support request failed with status ${response.status}`);
+  }
+
+  const data = (await response.json()) as { answer: string; grounded: boolean; sources: SourceCitation[] };
+  return { text: data.answer, grounded: data.grounded, sources: data.sources };
 }
 
 let messageCounter = 0;
@@ -44,8 +58,17 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
     async (text: string) => {
       setStatus("loading");
       try {
-        const replyText = await replyFn(text);
-        setMessages((prev) => [...prev, { id: nextMessageId("assistant"), role: "assistant", text: replyText }]);
+        const reply = await replyFn(text);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextMessageId("assistant"),
+            role: "assistant",
+            text: reply.text,
+            grounded: reply.grounded,
+            sources: reply.sources,
+          },
+        ]);
         setStatus("idle");
         pendingTextRef.current = null;
       } catch {
