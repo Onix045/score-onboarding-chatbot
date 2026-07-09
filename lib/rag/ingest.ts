@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { embedTexts } from "@/lib/clients/voyage";
+import { embedTexts } from "@/lib/clients/openai";
 import { getSupabaseServiceRoleClient } from "@/lib/clients/supabase";
 import { chunkMarkdown } from "./chunk";
+import { normalizeForEmbedding } from "./normalizeForEmbedding";
 import { parseFrontmatter } from "./parseFrontmatter";
 import type { DocumentChunk, EmbeddedChunk } from "./types";
 
@@ -45,7 +46,7 @@ export function buildChunksForFile(rawContent: string, absolutePath: string, roo
 
 export async function embedChunks(chunks: DocumentChunk[]): Promise<EmbeddedChunk[]> {
   if (chunks.length === 0) return [];
-  const embeddings = await embedTexts(chunks.map((chunk) => chunk.content));
+  const embeddings = await embedTexts(chunks.map((chunk) => normalizeForEmbedding(chunk.content)));
   return chunks.map((chunk, index) => ({ ...chunk, embedding: embeddings[index] }));
 }
 
@@ -85,7 +86,7 @@ export async function replaceChunksForSource(
  * Reads every approved Markdown file under `root`, validates frontmatter
  * (failing the whole run on an unrecognized category or missing
  * `confirmed: true` rather than silently skipping it), chunks it, embeds
- * the chunks in one batched Voyage call per file, and replaces that file's
+ * the chunks in one batched OpenAI embeddings call per file, and replaces that file's
  * rows in Supabase. Manual, explicit — invoked only via `npm run ingest`,
  * never automatically or from a web request.
  */

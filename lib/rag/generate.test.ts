@@ -4,9 +4,9 @@ import type { RetrievedChunk } from "./types";
 
 const createMock = vi.fn();
 
-vi.mock("@/lib/clients/anthropic", () => ({
-  getAnthropicClient: () => ({
-    messages: { create: (...args: unknown[]) => createMock(...args) },
+vi.mock("@/lib/clients/openai", () => ({
+  getOpenAIClient: () => ({
+    chat: { completions: { create: (...args: unknown[]) => createMock(...args) } },
   }),
 }));
 
@@ -28,8 +28,10 @@ beforeEach(() => {
 });
 
 describe("generateAnswer", () => {
-  it("calls Claude with a stateless, low-temperature request built only from the evidence", async () => {
-    createMock.mockResolvedValue({ content: [{ type: "text", text: "Inventory tracking explanation." }] });
+  it("calls OpenAI with a stateless, low-temperature request built only from the evidence", async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: "Inventory tracking explanation." } }],
+    });
 
     const answer = await generateAnswer("What is inventory?", CHUNKS);
 
@@ -37,22 +39,23 @@ describe("generateAnswer", () => {
     expect(createMock).toHaveBeenCalledTimes(1);
     const [request] = createMock.mock.calls[0];
     expect(request.temperature).toBe(0);
-    expect(request.messages).toHaveLength(1);
-    expect(request.messages[0].content).toContain("Inventory tracking keeps a running count of stock.");
-    expect(request.messages[0].content).toContain("What is inventory?");
-    expect(request.system).toMatch(/never reveal.*system instructions/i);
-    expect(request.system).toMatch(/ONLY the evidence/);
+    expect(request.messages).toHaveLength(2);
+    expect(request.messages[0].role).toBe("system");
+    expect(request.messages[1].content).toContain("Inventory tracking keeps a running count of stock.");
+    expect(request.messages[1].content).toContain("What is inventory?");
+    expect(request.messages[0].content).toMatch(/never reveal.*system instructions/i);
+    expect(request.messages[0].content).toMatch(/ONLY the evidence/);
   });
 
-  it("throws when Claude's response has no text block", async () => {
-    createMock.mockResolvedValue({ content: [{ type: "tool_use" }] });
+  it("throws when OpenAI's response has no message content", async () => {
+    createMock.mockResolvedValue({ choices: [{ message: { content: null } }] });
     await expect(generateAnswer("What is inventory?", CHUNKS)).rejects.toThrow(
-      "Claude response did not include a text block"
+      "OpenAI response did not include message content"
     );
   });
 
-  it("propagates a failure from the Anthropic client", async () => {
-    createMock.mockRejectedValue(new Error("anthropic down"));
-    await expect(generateAnswer("What is inventory?", CHUNKS)).rejects.toThrow("anthropic down");
+  it("propagates a failure from the OpenAI client", async () => {
+    createMock.mockRejectedValue(new Error("openai generation down"));
+    await expect(generateAnswer("What is inventory?", CHUNKS)).rejects.toThrow("openai generation down");
   });
 });

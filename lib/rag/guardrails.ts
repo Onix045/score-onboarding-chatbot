@@ -1,10 +1,4 @@
-import { UNSUPPORTED_FEATURE_FALLBACK } from "./fallback";
-
-export type GuardrailCategory =
-  | "sensitive-data"
-  | "real-account"
-  | "legal-financial-advice"
-  | "unsupported-feature";
+export type GuardrailCategory = "sensitive-data" | "real-account" | "legal-financial-advice";
 
 export interface GuardrailMatch {
   category: GuardrailCategory;
@@ -19,8 +13,6 @@ export const REAL_ACCOUNT_RESPONSE =
 
 export const LEGAL_FINANCIAL_ADVICE_RESPONSE =
   "I can explain how S.C.O.R.E. organizes business information, but I can't provide legal, tax, accounting, or financial advice.";
-
-export const UNSUPPORTED_FEATURE_RESPONSE = UNSUPPORTED_FEATURE_FALLBACK;
 
 const SENSITIVE_DATA_KEYWORDS = [
   "password",
@@ -62,21 +54,6 @@ const LEGAL_FINANCIAL_KEYWORDS = [
   "audit",
 ];
 
-const UNSUPPORTED_FEATURE_KEYWORDS = [
-  "price",
-  "pricing",
-  "cost",
-  "payment",
-  "refund",
-  "hardware",
-  "barcode",
-  "scanner",
-  "integrat",
-  "offline",
-  "multi-location",
-  "certif",
-];
-
 function matchesAny(normalized: string, keywords: string[]): boolean {
   return keywords.some((keyword) => normalized.includes(keyword));
 }
@@ -92,7 +69,7 @@ function containsCardLikeNumber(rawText: string): boolean {
 }
 
 /**
- * Four independent deterministic pre-checks run before embed/retrieve/
+ * Three independent deterministic pre-checks run before embed/retrieve/
  * generate — a deterministic guarantee, not a prompt instruction, so it
  * can't be defeated by a cleverly worded question. Order reflects
  * priority when a question could plausibly match more than one category.
@@ -110,10 +87,6 @@ export function checkGuardrails(question: string): GuardrailMatch | null {
 
   if (matchesAny(normalized, LEGAL_FINANCIAL_KEYWORDS)) {
     return { category: "legal-financial-advice", response: LEGAL_FINANCIAL_ADVICE_RESPONSE };
-  }
-
-  if (matchesAny(normalized, UNSUPPORTED_FEATURE_KEYWORDS)) {
-    return { category: "unsupported-feature", response: UNSUPPORTED_FEATURE_RESPONSE };
   }
 
   return null;

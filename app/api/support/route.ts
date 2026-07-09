@@ -2,19 +2,27 @@ import { NextResponse } from "next/server";
 import { embedQuery } from "@/lib/rag/embed";
 import { UNSUPPORTED_FEATURE_FALLBACK } from "@/lib/rag/fallback";
 import { generateAnswer } from "@/lib/rag/generate";
+import { checkGreeting } from "@/lib/rag/greeting";
 import { checkGuardrails } from "@/lib/rag/guardrails";
 import { checkRateLimit } from "@/lib/rag/rateLimit";
-import { retrieveRelevantChunks } from "@/lib/rag/retrieve";
-import type { RetrievedChunk, SourceCitation, SupportAnswer } from "@/lib/rag/types";
-import { QuestionValidationError, validateQuestion } from "@/lib/rag/validate";
+import { retrieveChunksBySourcePath, retrieveRelevantChunks } from "@/lib/rag/retrieve";
+import { rewriteQuestionWithHistory } from "@/lib/rag/rewrite";
+import type { ChatHistoryTurn, RetrievedChunk, SourceCitation, SupportAnswer } from "@/lib/rag/types";
+import { QuestionValidationError, validateHistory, validateQuestion } from "@/lib/rag/validate";
+import { withRetry } from "@/lib/rag/withRetry";
 
 function getEnvNumber(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
   return Number.isFinite(parsed) && process.env[name] ? parsed : fallback;
 }
 
-const SIMILARITY_THRESHOLD = getEnvNumber("RAG_SIMILARITY_THRESHOLD", 0.75);
+const SIMILARITY_THRESHOLD = getEnvNumber("RAG_SIMILARITY_THRESHOLD", 0.35);
 const MAX_CHUNKS = getEnvNumber("RAG_MAX_CHUNKS", 4);
+
+// The confirmed "not yet available" content (CLAUDE.md §2) — the grounding
+// of last resort so every question still gets a real, generated answer
+// instead of the fixed fallback string.
+const LIMITATIONS_SOURCE_PATH = "limitations/unsupported-features.md";
 
 // Basic in-memory abuse protection suitable for a single-instance prototype
 // demo — not a substitute for production-grade rate limiting.
@@ -52,10 +60,26 @@ function logServerError(label: string, error: unknown): void {
 
 /**
  * The only network entry point for the RAG support path. Deterministically
- * short-circuits to the fixed fallback (Claude is never called) when a
- * guardrail matches, when zero retrieved chunks clear the similarity
- * threshold, or when any upstream step throws — the caller never sees a
- * raw error, stack trace, or which specific backend failed.
+ * short-circuits (no similarity search) to a friendly greeting on bare
+ * small talk, or to a fixed canned string when a guardrail matches the raw
+ * question or a history-resolved question (sensitive-data, real-account,
+ * or legal-financial-advice — honesty/safety refusals with no knowledge-
+ * base content to ground against). Every other question, including ones
+ * about unconfirmed topics like pricing or hardware, goes through the same
+ * embed → retrieve → generate pipeline. When zero retrieved chunks clear
+ * the similarity threshold, the route doesn't return the fixed string
+ * directly — it falls back to the confirmed "not yet available" content
+ * (content/knowledge/limitations/unsupported-features.md) as evidence and
+ * still generates a real, non-invented answer from it, so the user gets a
+ * relevant reply instead of canned text for any question. The fixed string
+ * is reserved for true failure: it fires only when that limitations
+ * content itself can't be found, or when any upstream step (history
+ * rewrite, embed, retrieve, generate) throws even after one withRetry
+ * attempt — this environment has observed transient OpenAI/Supabase
+ * connection failures that a single retry usually recovers from, so a lone
+ * flaky call isn't the difference between a real answer and the fallback.
+ * The caller never
+ * sees a raw error, stack trace, or which specific backend failed.
  */
 export async function POST(request: Request) {
   const identifier = getClientIdentifier(request);
@@ -93,42 +117,90 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  const historyRaw =
+    typeof body === "object" && body !== null && "history" in body
+      ? (body as { history: unknown }).history
+      : undefined;
+
+  let history: ChatHistoryTurn[];
+  try {
+    history = validateHistory(historyRaw);
+  } catch (error) {
+    if (error instanceof QuestionValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  const greeting = checkGreeting(validatedQuestion);
+  if (greeting) {
+    const response: SupportAnswer = { answer: greeting, grounded: false, sources: [] };
+    return NextResponse.json(response);
+  }
+
   const guardrailMatch = checkGuardrails(validatedQuestion);
   if (guardrailMatch) {
     const response: SupportAnswer = { answer: guardrailMatch.response, grounded: false, sources: [] };
     return NextResponse.json(response);
   }
 
+  let resolvedQuestion = validatedQuestion;
+  if (history.length > 0) {
+    try {
+      resolvedQuestion = await withRetry(() => rewriteQuestionWithHistory(validatedQuestion, history));
+    } catch (error) {
+      logServerError("OpenAI rewrite failed:", error);
+      return NextResponse.json(fallbackResponse());
+    }
+
+    const resolvedGuardrailMatch = checkGuardrails(resolvedQuestion);
+    if (resolvedGuardrailMatch) {
+      const response: SupportAnswer = { answer: resolvedGuardrailMatch.response, grounded: false, sources: [] };
+      return NextResponse.json(response);
+    }
+  }
+
   let queryEmbedding: number[];
   try {
-    queryEmbedding = await embedQuery(validatedQuestion);
+    queryEmbedding = await withRetry(() => embedQuery(resolvedQuestion));
   } catch (error) {
-    logServerError("Voyage embedding failed:", error);
+    logServerError("OpenAI embedding failed:", error);
     return NextResponse.json(fallbackResponse());
   }
 
   let chunks: RetrievedChunk[];
   try {
-    chunks = await retrieveRelevantChunks({
-      queryEmbedding,
-      similarityThreshold: SIMILARITY_THRESHOLD,
-      maxChunks: MAX_CHUNKS,
-    });
+    chunks = await withRetry(() =>
+      retrieveRelevantChunks({
+        queryEmbedding,
+        similarityThreshold: SIMILARITY_THRESHOLD,
+        maxChunks: MAX_CHUNKS,
+      })
+    );
   } catch (error) {
     logServerError("Supabase retrieval failed:", error);
     return NextResponse.json(fallbackResponse());
   }
 
   if (chunks.length === 0) {
-    return NextResponse.json(fallbackResponse());
+    try {
+      chunks = await withRetry(() => retrieveChunksBySourcePath(LIMITATIONS_SOURCE_PATH));
+    } catch (error) {
+      logServerError("Supabase limitations retrieval failed:", error);
+      return NextResponse.json(fallbackResponse());
+    }
+
+    if (chunks.length === 0) {
+      return NextResponse.json(fallbackResponse());
+    }
   }
 
   try {
-    const answer = await generateAnswer(validatedQuestion, chunks);
+    const answer = await withRetry(() => generateAnswer(resolvedQuestion, chunks));
     const response: SupportAnswer = { answer, grounded: true, sources: toSources(chunks) };
     return NextResponse.json(response);
   } catch (error) {
-    logServerError("Claude generation failed:", error);
+    logServerError("OpenAI generation failed:", error);
     return NextResponse.json(fallbackResponse());
   }
 }

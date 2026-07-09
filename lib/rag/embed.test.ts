@@ -3,7 +3,7 @@ import { embedQuery } from "./embed";
 
 const embedTextsMock = vi.fn();
 
-vi.mock("@/lib/clients/voyage", () => ({
+vi.mock("@/lib/clients/openai", () => ({
   embedTexts: (texts: string[]) => embedTextsMock(texts),
 }));
 
@@ -21,8 +21,16 @@ describe("embedQuery", () => {
     expect(embedding).toEqual([0.1, 0.2, 0.3]);
   });
 
-  it("propagates a failure from the Voyage client", async () => {
-    embedTextsMock.mockRejectedValue(new Error("voyage down"));
-    await expect(embedQuery("What is inventory?")).rejects.toThrow("voyage down");
+  it("propagates a failure from the OpenAI client", async () => {
+    embedTextsMock.mockRejectedValue(new Error("openai embeddings down"));
+    await expect(embedQuery("What is inventory?")).rejects.toThrow("openai embeddings down");
+  });
+
+  it("normalizes the dotted acronym before embedding", async () => {
+    embedTextsMock.mockResolvedValue([[0.1, 0.2, 0.3]]);
+
+    await embedQuery("What is S.C.O.R.E.?");
+
+    expect(embedTextsMock).toHaveBeenCalledWith(["What is SCORE?"]);
   });
 });

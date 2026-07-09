@@ -61,3 +61,47 @@ export async function retrieveRelevantChunks({
       similarity: row.similarity,
     }));
 }
+
+interface SourcePathRow {
+  id: string;
+  source_path: string;
+  category: string;
+  title: string;
+  chunk_index: number;
+  content: string;
+  token_count: number;
+}
+
+/**
+ * Fetches every chunk of one known source file directly by path, ordered
+ * and with no embedding or similarity threshold involved. Used by route.ts
+ * as the grounding evidence of last resort — when normal similarity search
+ * finds nothing, this pulls the "not yet confirmed" content so the model
+ * still generates a real, non-invented answer instead of a canned string.
+ */
+export async function retrieveChunksBySourcePath(sourcePath: string): Promise<RetrievedChunk[]> {
+  const client = getSupabaseServiceRoleClient();
+
+  const { data, error } = await client
+    .from("document_chunks")
+    .select("id, source_path, category, title, chunk_index, content, token_count")
+    .eq("source_path", sourcePath)
+    .order("chunk_index", { ascending: true });
+
+  if (error) {
+    throw new Error(`Retrieval failed: ${error.message}`);
+  }
+
+  const rows = (data ?? []) as SourcePathRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    sourcePath: row.source_path,
+    category: row.category as KnowledgeCategory,
+    title: row.title,
+    chunkIndex: row.chunk_index,
+    content: row.content,
+    tokenCount: row.token_count,
+    similarity: 1,
+  }));
+}

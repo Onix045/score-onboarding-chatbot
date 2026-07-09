@@ -1,7 +1,7 @@
-import { getAnthropicClient } from "@/lib/clients/anthropic";
+import { getOpenAIClient } from "@/lib/clients/openai";
 import type { RetrievedChunk } from "./types";
 
-const CLAUDE_MODEL = "claude-sonnet-5";
+const CHAT_MODEL = "gpt-4o-mini";
 const MAX_OUTPUT_TOKENS = 400;
 
 const SYSTEM_PROMPT = `You are the S.C.O.R.E. Guide, a support assistant for a small business operations app.
@@ -26,14 +26,14 @@ function buildEvidenceBlock(chunks: RetrievedChunk[]): string {
  * model's perspective — consistent with excluding chat-history embeddings.
  */
 export async function generateAnswer(question: string, chunks: RetrievedChunk[]): Promise<string> {
-  const client = getAnthropicClient();
+  const client = getOpenAIClient();
 
-  const response = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: MAX_OUTPUT_TOKENS,
+  const response = await client.chat.completions.create({
+    model: CHAT_MODEL,
+    max_completion_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
-    system: SYSTEM_PROMPT,
     messages: [
+      { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
         content: `Evidence:\n${buildEvidenceBlock(chunks)}\n\nQuestion: ${question}`,
@@ -41,10 +41,10 @@ export async function generateAnswer(question: string, chunks: RetrievedChunk[])
     ],
   });
 
-  const textBlock = response.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude response did not include a text block");
+  const content = response.choices[0]?.message.content;
+  if (!content) {
+    throw new Error("OpenAI response did not include message content");
   }
 
-  return textBlock.text;
+  return content;
 }

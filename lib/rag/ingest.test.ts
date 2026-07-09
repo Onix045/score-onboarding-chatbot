@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildChunksForFile, ingestKnowledgeBase, listMarkdownFiles } from "./ingest";
+import { buildChunksForFile, embedChunks, ingestKnowledgeBase, listMarkdownFiles } from "./ingest";
+import type { DocumentChunk } from "./types";
 
 const embedTextsMock = vi.fn();
 const deleteEqMock = vi.fn();
 const insertMock = vi.fn();
 const fromMock = vi.fn();
 
-vi.mock("@/lib/clients/voyage", () => ({
+vi.mock("@/lib/clients/openai", () => ({
   embedTexts: (texts: string[]) => embedTextsMock(texts),
 }));
 
@@ -57,6 +58,25 @@ describe("buildChunksForFile", () => {
   });
 });
 
+describe("embedChunks", () => {
+  it("normalizes the dotted acronym in chunk content before embedding, without altering stored content", async () => {
+    const chunk: DocumentChunk = {
+      id: "overview/what-is-score.md#0",
+      sourcePath: "overview/what-is-score.md",
+      category: "overview",
+      title: "What is S.C.O.R.E.?",
+      chunkIndex: 0,
+      content: "S.C.O.R.E. helps small businesses manage inventory.",
+      tokenCount: 10,
+    };
+
+    const [embedded] = await embedChunks([chunk]);
+
+    expect(embedTextsMock).toHaveBeenCalledWith(["SCORE helps small businesses manage inventory."]);
+    expect(embedded.content).toBe("S.C.O.R.E. helps small businesses manage inventory.");
+  });
+});
+
 describe("ingestKnowledgeBase", () => {
   it("processes every real knowledge file, embedding and replacing chunks per source", async () => {
     const summary = await ingestKnowledgeBase(KNOWLEDGE_ROOT);
@@ -76,8 +96,8 @@ describe("ingestKnowledgeBase", () => {
     await expect(ingestKnowledgeBase(KNOWLEDGE_ROOT)).rejects.toThrow(/Failed to delete existing chunks/);
   });
 
-  it("propagates a Voyage embeddings failure", async () => {
-    embedTextsMock.mockRejectedValueOnce(new Error("voyage down"));
-    await expect(ingestKnowledgeBase(KNOWLEDGE_ROOT)).rejects.toThrow("voyage down");
+  it("propagates an OpenAI embeddings failure", async () => {
+    embedTextsMock.mockRejectedValueOnce(new Error("openai embeddings down"));
+    await expect(ingestKnowledgeBase(KNOWLEDGE_ROOT)).rejects.toThrow("openai embeddings down");
   });
 });

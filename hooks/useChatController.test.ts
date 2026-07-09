@@ -1,10 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { ChatHistoryTurn } from "@/lib/rag/types";
 import { useChatController, type ChatReply } from "./useChatController";
 
 describe("useChatController", () => {
   it("sends a message and appends the assistant reply with grounded state and sources", async () => {
-    const replyFn = vi.fn<(userText: string) => Promise<ChatReply>>().mockResolvedValue({
+    const replyFn = vi.fn<(userText: string, history: ChatHistoryTurn[]) => Promise<ChatReply>>().mockResolvedValue({
       text: "Inventory tracking explanation.",
       grounded: true,
       sources: [{ title: "Inventory tracking", category: "inventory" }],
@@ -18,7 +19,7 @@ describe("useChatController", () => {
 
     await waitFor(() => expect(result.current.status).toBe("idle"));
 
-    expect(replyFn).toHaveBeenCalledWith("What is inventory?");
+    expect(replyFn).toHaveBeenCalledWith("What is inventory?", []);
     const lastMessage = result.current.messages[result.current.messages.length - 1];
     expect(lastMessage.role).toBe("assistant");
     expect(lastMessage.text).toBe("Inventory tracking explanation.");
@@ -27,7 +28,7 @@ describe("useChatController", () => {
   });
 
   it("ignores empty or whitespace-only input", () => {
-    const replyFn = vi.fn<(userText: string) => Promise<ChatReply>>();
+    const replyFn = vi.fn<(userText: string, history: ChatHistoryTurn[]) => Promise<ChatReply>>();
     const { result } = renderHook(() => useChatController({ replyFn }));
     const initialCount = result.current.messages.length;
 
@@ -60,6 +61,30 @@ describe("useChatController", () => {
     expect(replyFn).toHaveBeenCalledTimes(2);
     const lastMessage = result.current.messages[result.current.messages.length - 1];
     expect(lastMessage.text).toBe("Recovered answer.");
+  });
+
+  it("includes prior turns as history on a follow-up message", async () => {
+    const replyFn = vi
+      .fn<(userText: string, history: ChatHistoryTurn[]) => Promise<ChatReply>>()
+      .mockResolvedValueOnce({ text: "Inventory tracking explanation.", grounded: true, sources: [] })
+      .mockResolvedValueOnce({ text: "You can add items from the inventory tab.", grounded: true, sources: [] });
+
+    const { result } = renderHook(() => useChatController({ replyFn }));
+
+    act(() => {
+      result.current.sendText("What is inventory?");
+    });
+    await waitFor(() => expect(result.current.status).toBe("idle"));
+
+    act(() => {
+      result.current.sendText("How can I use it?");
+    });
+    await waitFor(() => expect(result.current.status).toBe("idle"));
+
+    expect(replyFn).toHaveBeenNthCalledWith(2, "How can I use it?", [
+      { role: "user", text: "What is inventory?" },
+      { role: "assistant", text: "Inventory tracking explanation." },
+    ]);
   });
 
   it("restarts back to just the welcome message", async () => {

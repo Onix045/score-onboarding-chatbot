@@ -23,6 +23,10 @@ export function ChatWidget() {
   }, [panelState]);
 
   function handleQuickAction(action: QuickAction) {
+    if (action.id === "ask-a-question") {
+      inputRef.current?.focus();
+      return;
+    }
     sendText(action.label);
   }
 

@@ -34,8 +34,14 @@ export interface SourceCitation {
   category: KnowledgeCategory;
 }
 
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
 export interface SupportQuestionRequest {
   question: string;
+  history?: ChatHistoryTurn[];
 }
 
 export interface SupportAnswer {

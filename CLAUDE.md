@@ -26,7 +26,7 @@ Confirmed capabilities — the only things the chatbot may describe as real S.C.
 
 Everything else is unconfirmed. The chatbot must never invent: pricing, payment processors, hardware/device compatibility, accounting integrations, tax functionality, offline support, multi-location support, refund handling, or security certifications.
 
-When asked about anything unconfirmed, respond exactly:
+When asked about anything unconfirmed, the assistant must still engage and answer in its own words — it must not go silent or refuse outright. The answer is generated strictly from the confirmed "not yet available" content in `content/knowledge/limitations/unsupported-features.md` (the only evidence given to the model for these topics), so it can never invent a price, a compatibility claim, or any other specific that file doesn't contain. If that grounding is ever unavailable (the content can't be retrieved, or generation fails), the chatbot falls back to the fixed sentence:
 
 > "I don't have confirmed information about that feature yet. A S.C.O.R.E. team member would be the best person to confirm it."
 
@@ -36,8 +36,8 @@ When asked about anything unconfirmed, respond exactly:
 - React
 - TypeScript (strict mode)
 - Tailwind CSS
-- Anthropic TypeScript SDK (`@anthropic-ai/sdk`)
-- Server-side Next.js API route (Claude is never called from client code)
+- OpenAI TypeScript SDK (`openai`) — used for both answer generation (chat completions) and embeddings
+- Server-side Next.js API route (the LLM is never called from client code)
 - Vitest + React Testing Library
 - Vercel-compatible deployment
 
@@ -50,7 +50,7 @@ No additional dependencies without written justification in the PR/commit descri
 - TypeScript strict mode stays on; never loosen `tsconfig`.
 - Avoid `any`. If unavoidable, add a comment explaining why.
 - **Deterministic TypeScript logic owns**: onboarding step progression, input validation, inventory calculations, progress indicators, and restart behavior — implemented as pure, testable functions (e.g. in `lib/`), not inlined in JSX.
-- **Claude is used only for**: free-form questions, plain-language explanations, and understanding differently-worded input. Claude never calculates inventory or decides the next onboarding step.
+- **The LLM (OpenAI) is used only for**: free-form questions, plain-language explanations, and understanding differently-worded input. The LLM never calculates inventory or decides the next onboarding step.
 - Components stay small and focused on one responsibility.
 - Plain, accessible interface language — no jargon.
 - No unnecessary abstractions — solve the current prompt's scope only.
@@ -70,7 +70,7 @@ The chatbot must never:
 
 Environment rules:
 
-- `ANTHROPIC_API_KEY` is server-only and must never be exposed to client-side code.
+- `OPENAI_API_KEY` is server-only and must never be exposed to client-side code.
 - Never use a `NEXT_PUBLIC_` prefix for the API key or any other secret.
 
 ## 6. Testing commands
@@ -81,7 +81,7 @@ Environment rules:
 - `npm run test:run` — Vitest, single run (CI / definition of done).
 - `npm run build` — Next.js production build.
 
-Tests are required for important logic and error cases, especially: onboarding step transitions, input validation, inventory calculations, and restart behavior. Prefer testing deterministic logic directly over mocking the Claude API extensively.
+Tests are required for important logic and error cases, especially: onboarding step transitions, input validation, inventory calculations, and restart behavior. Prefer testing deterministic logic directly over mocking the LLM API extensively.
 
 ## 7. Definition of done
 
@@ -100,6 +100,6 @@ A task is complete only when:
 - `.env`, `.env.local`, `.env*.local` (any file containing real secrets)
 - `.claude/settings.local.json` (local session config)
 - `/node_modules`, `/.next/`, `/out/`, `/build`, `/coverage`
-- Any file containing a real `ANTHROPIC_API_KEY` value
+- Any file containing a real `OPENAI_API_KEY` value
 
 Only `.env.example` (with placeholder values) is committed.

@@ -3,11 +3,12 @@
 import { useCallback, useRef, useState } from "react";
 import { WELCOME_MESSAGE } from "@/lib/chat/constants";
 import type { ChatMessage, ChatPanelState, ChatStatus } from "@/lib/chat/types";
-import type { SourceCitation } from "@/lib/rag/types";
+import type { ChatHistoryTurn, SourceCitation } from "@/lib/rag/types";
+import { MAX_HISTORY_TURNS } from "@/lib/rag/validate";
 
 // Caps how many messages the client keeps in memory/renders during a long
-// demo session. Not a Claude context limit — each question is stateless
-// server-side regardless of this cap.
+// demo session. The server independently caps and validates how much
+// history it accepts (see MAX_HISTORY_TURNS) regardless of this cap.
 const MAX_MESSAGES = 50;
 
 export interface ChatReply {
@@ -16,13 +17,13 @@ export interface ChatReply {
   sources: SourceCitation[];
 }
 
-export type ReplyFn = (userText: string) => Promise<ChatReply>;
+export type ReplyFn = (userText: string, history: ChatHistoryTurn[]) => Promise<ChatReply>;
 
-async function defaultReplyFn(userText: string): Promise<ChatReply> {
+async function defaultReplyFn(userText: string, history: ChatHistoryTurn[]): Promise<ChatReply> {
   const response = await fetch("/api/support", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: userText }),
+    body: JSON.stringify({ question: userText, history }),
   });
 
   if (!response.ok) {
@@ -45,6 +46,13 @@ function appendMessage(messages: ChatMessage[], message: ChatMessage): ChatMessa
   // Keep the welcome message plus the most recent messages, so a long
   // session doesn't grow the render/memory footprint without bound.
   return [next[0], ...next.slice(next.length - (MAX_MESSAGES - 1))];
+}
+
+function toHistory(messages: ChatMessage[]): ChatHistoryTurn[] {
+  return messages
+    .filter((message) => message.id !== WELCOME_MESSAGE.id)
+    .slice(-MAX_HISTORY_TURNS)
+    .map((message) => ({ role: message.role, text: message.text }));
 }
 
 interface UseChatControllerOptions {
@@ -74,7 +82,7 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
     async (text: string) => {
       setStatus("loading");
       try {
-        const reply = await replyFn(text);
+        const reply = await replyFn(text, toHistory(messages));
         setMessages((prev) =>
           appendMessage(prev, {
             id: nextMessageId("assistant"),
@@ -92,7 +100,7 @@ export function useChatController({ replyFn = defaultReplyFn }: UseChatControlle
         isSendingRef.current = false;
       }
     },
-    [replyFn]
+    [replyFn, messages]
   );
 
   const sendText = useCallback(

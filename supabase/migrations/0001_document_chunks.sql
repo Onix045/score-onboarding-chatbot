@@ -11,13 +11,16 @@ create table if not exists document_chunks (
   chunk_index integer not null,
   content text not null,
   token_count integer not null,
-  embedding vector(512),           -- dimension must match VOYAGE_EMBEDDING_MODEL
+  embedding vector(512),           -- text-embedding-3-small, requested at 512 dims (see lib/clients/openai.ts)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create index if not exists document_chunks_embedding_idx
-  on document_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+-- Deliberately no ivfflat/approximate index: this knowledge base is small
+-- (tens to low hundreds of chunks), where an approximate ANN index adds
+-- correctness risk (wrong `lists`/`probes` tuning can silently miss real
+-- matches) without any real performance benefit over an exact sequential
+-- scan. Revisit only if the corpus grows into the thousands of rows.
 
 create index if not exists document_chunks_source_path_idx on document_chunks (source_path);
 
