@@ -23,6 +23,10 @@ body {
   font-family: var(--font-sans);
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;

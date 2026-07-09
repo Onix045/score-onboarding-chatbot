@@ -4,7 +4,7 @@ import { MessageBubble } from "./MessageBubble";
 import type { ChatMessage } from "@/lib/chat/types";
 
 describe("MessageBubble", () => {
-  it("renders a grounded assistant answer with its sources", () => {
+  it("renders a grounded assistant answer without a sources line or confirmation tag", () => {
     const message: ChatMessage = {
       id: "1",
       role: "assistant",
@@ -16,11 +16,11 @@ describe("MessageBubble", () => {
     render(<MessageBubble message={message} />);
 
     expect(screen.getByText(message.text)).toBeInTheDocument();
-    expect(screen.getByText(/Sources: Inventory tracking/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
     expect(screen.queryByText("Not yet confirmed")).not.toBeInTheDocument();
   });
 
-  it("renders an unconfirmed fallback answer without a sources line", () => {
+  it("renders an unconfirmed fallback answer without a sources line or confirmation tag", () => {
     const message: ChatMessage = {
       id: "2",
       role: "assistant",
@@ -31,8 +31,9 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
-    expect(screen.getByText("Not yet confirmed")).toBeInTheDocument();
+    expect(screen.getByText(message.text)).toBeInTheDocument();
     expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Not yet confirmed")).not.toBeInTheDocument();
   });
 
   it("renders a plain user message without sources or confirmation state", () => {

@@ -1,3 +1,5 @@
+import { CloseIcon } from "./icons";
+
 interface MinimizedBarProps {
   onExpand: () => void;
   onClose: () => void;
@@ -20,7 +22,7 @@ export function MinimizedBar({ onExpand, onClose }: MinimizedBarProps) {
         aria-label="Close chat"
         className="flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
-        <span aria-hidden="true">&#215;</span>
+        <CloseIcon className="h-4 w-4" />
       </button>
     </div>
   );

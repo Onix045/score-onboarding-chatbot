@@ -1,3 +1,5 @@
+import { CloseIcon, MinimizeIcon, RestartIcon } from "./icons";
+
 interface ChatHeaderProps {
   onMinimize: () => void;
   onClose: () => void;
@@ -18,7 +20,7 @@ export function ChatHeader({ onMinimize, onClose, onRestart }: ChatHeaderProps) 
           aria-label="Restart conversation"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
-          <span aria-hidden="true">&#8635;</span>
+          <RestartIcon className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -26,7 +28,7 @@ export function ChatHeader({ onMinimize, onClose, onRestart }: ChatHeaderProps) 
           aria-label="Minimize chat"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
-          <span aria-hidden="true">&#8211;</span>
+          <MinimizeIcon className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -34,7 +36,7 @@ export function ChatHeader({ onMinimize, onClose, onRestart }: ChatHeaderProps) 
           aria-label="Close chat"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
-          <span aria-hidden="true">&#215;</span>
+          <CloseIcon className="h-4 w-4" />
         </button>
       </div>
     </div>

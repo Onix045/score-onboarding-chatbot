@@ -5,11 +5,6 @@ import { ChatInput } from "./ChatInput";
 import { MAX_QUESTION_LENGTH } from "@/lib/rag/validate";
 
 describe("ChatInput", () => {
-  it("shows a persistent sensitive-data reminder", () => {
-    render(<ChatInput onSend={vi.fn()} />);
-    expect(screen.getByText(/don't share passwords or payment details/i)).toBeInTheDocument();
-  });
-
   it("sends the trimmed message and clears the input", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();

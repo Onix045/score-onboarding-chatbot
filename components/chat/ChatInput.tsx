@@ -18,6 +18,7 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(functio
   const [value, setValue] = useState("");
   const isOverLimit = value.length > MAX_QUESTION_LENGTH;
   const showLengthNotice = value.length >= LENGTH_WARNING_THRESHOLD;
+  const canSend = !disabled && value.trim().length > 0 && !isOverLimit;
 
   function submit() {
     const trimmed = value.trim();
@@ -39,8 +40,11 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(functio
   }
 
   return (
-    <div className="border-t border-neutral-200 dark:border-neutral-700">
-      <form onSubmit={handleSubmit} className="flex items-end gap-2 p-3">
+    <div className="border-t border-neutral-200 p-3 dark:border-neutral-700">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-center gap-1 rounded-full border border-neutral-300 bg-white py-1 pl-4 pr-1 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800"
+      >
         <label htmlFor="chat-message-input" className="sr-only">
           Type your message
         </label>
@@ -52,27 +56,33 @@ export const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(functio
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}
+          autoComplete="off"
           placeholder="Type your question..."
-          className="min-h-11 flex-1 resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800"
+          className="min-h-9 flex-1 resize-none bg-transparent py-1.5 text-sm focus-visible:outline-none disabled:opacity-60"
         />
         <button
           type="submit"
-          disabled={disabled || value.trim().length === 0 || isOverLimit}
-          className="min-h-11 min-w-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!canSend}
+          aria-label="Send"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500"
         >
-          Send
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+            <path d="M3.4 20.6 21 12 3.4 3.4 3 10l13 2-13 2z" />
+          </svg>
         </button>
       </form>
-      <div className="flex items-center justify-between gap-3 px-3 pb-2 text-xs text-neutral-400 dark:text-neutral-500">
-        <p>For your safety, please don&apos;t share passwords or payment details here.</p>
-        {showLengthNotice ? (
-          <p role="status" className={isOverLimit ? "text-red-600 dark:text-red-400" : ""}>
-            {isOverLimit
-              ? `${value.length - MAX_QUESTION_LENGTH} characters over the limit`
-              : `${MAX_QUESTION_LENGTH - value.length} characters left`}
-          </p>
-        ) : null}
-      </div>
+      {showLengthNotice ? (
+        <p
+          role="status"
+          className={`mt-1 px-2 text-xs ${
+            isOverLimit ? "text-red-600 dark:text-red-400" : "text-neutral-400 dark:text-neutral-500"
+          }`}
+        >
+          {isOverLimit
+            ? `${value.length - MAX_QUESTION_LENGTH} characters over the limit`
+            : `${MAX_QUESTION_LENGTH - value.length} characters left`}
+        </p>
+      ) : null}
     </div>
   );
 });
