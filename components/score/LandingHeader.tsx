@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { LaunchIcon, LogInIcon, MailIcon, MenuIcon } from "./icons";
 
 const NAV_LINK_CLASS =
   "px-3 text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100";
@@ -53,7 +54,7 @@ export function LandingHeader() {
             onClick={() => setMenuOpen((open) => !open)}
             type="button"
           >
-            <i aria-hidden="true" className="bi bi-list text-xl leading-none" />
+            <MenuIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -62,17 +63,14 @@ export function LandingHeader() {
         <div className="border-t border-slate-200 bg-white p-3 sm:hidden dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col gap-1">
             <button className="btn-primary w-full justify-center" type="button">
-              <i aria-hidden="true" className="bi bi-rocket-takeoff" />
+              <LaunchIcon className="h-4 w-4" />
               Start Free Trial
             </button>
             <button
               className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 dark:text-slate-200"
               type="button"
             >
-              <i
-                aria-hidden="true"
-                className="bi bi-box-arrow-in-right text-base leading-none text-slate-400"
-              />
+              <LogInIcon className="h-4 w-4 text-slate-400" />
               Sign in
             </button>
             <Link
@@ -80,7 +78,7 @@ export function LandingHeader() {
               href="#contact"
               onClick={() => setMenuOpen(false)}
             >
-              <i aria-hidden="true" className="bi bi-envelope text-base leading-none text-slate-400" />
+              <MailIcon className="h-4 w-4 text-slate-400" />
               Contact
             </Link>
           </div>

@@ -1,20 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GREETING_RESPONSE } from "@/lib/rag/greeting";
+import { ACKNOWLEDGEMENT_RESPONSE, GREETING_RESPONSE, WELLBEING_RESPONSE } from "@/lib/rag/greeting";
+import { CONVERSATION_CONTROL_RESPONSE } from "@/lib/rag/intent";
 import { resetRateLimitStateForTests } from "@/lib/rag/rateLimit";
 import { UNSUPPORTED_FEATURE_FALLBACK } from "@/lib/rag/fallback";
 import { POST } from "./route";
 import type { RetrievedChunk } from "@/lib/rag/types";
 import { LEGAL_FINANCIAL_ADVICE_RESPONSE, REAL_ACCOUNT_RESPONSE, SENSITIVE_DATA_RESPONSE } from "@/lib/rag/guardrails";
+import { MAX_HISTORY_TURNS } from "@/lib/rag/validate";
 
-const embedQueryMock = vi.fn();
 const retrieveRelevantChunksMock = vi.fn();
 const retrieveChunksBySourcePathMock = vi.fn();
 const generateAnswerMock = vi.fn();
 const rewriteQuestionWithHistoryMock = vi.fn();
 
-vi.mock("@/lib/rag/embed", () => ({
-  embedQuery: (...args: unknown[]) => embedQueryMock(...args),
-}));
 vi.mock("@/lib/rag/retrieve", () => ({
   retrieveRelevantChunks: (...args: unknown[]) => retrieveRelevantChunksMock(...args),
   retrieveChunksBySourcePath: (...args: unknown[]) => retrieveChunksBySourcePathMock(...args),
@@ -65,12 +63,10 @@ function postRequest(body: unknown, headers?: Record<string, string>) {
 }
 
 beforeEach(() => {
-  embedQueryMock.mockReset();
   retrieveRelevantChunksMock.mockReset();
   retrieveChunksBySourcePathMock.mockReset();
   generateAnswerMock.mockReset();
   rewriteQuestionWithHistoryMock.mockReset();
-  embedQueryMock.mockResolvedValue([0.1, 0.2]);
   retrieveRelevantChunksMock.mockResolvedValue([]);
   retrieveChunksBySourcePathMock.mockResolvedValue(ALL_LIMITATIONS_CHUNKS);
   resetRateLimitStateForTests();
@@ -81,19 +77,71 @@ describe("POST /api/support", () => {
     const response = await POST(postRequest("{not valid json"));
 
     expect(response.status).toBe(400);
-    expect(embedQueryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 when question is missing or not a string", async () => {
     const response = await POST(postRequest({ question: 42 }));
     expect(response.status).toBe(400);
-    expect(embedQueryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 for an empty question", async () => {
     const response = await POST(postRequest({ question: "   " }));
     expect(response.status).toBe(400);
-    expect(embedQueryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+  });
+
+  it("answers wellbeing small talk without vector-store retrieval", async () => {
+    const response = await POST(postRequest({ question: "How are you doing today?" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(WELLBEING_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(retrieveChunksBySourcePathMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("answers short acknowledgements without rewriting or vector-store retrieval", async () => {
+    const response = await POST(
+      postRequest({
+        question: "good.",
+        history: [
+          { role: "user", text: "What is inventory tracking?" },
+          { role: "assistant", text: "Inventory tracking keeps a running count of stock." },
+        ],
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(ACKNOWLEDGEMENT_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("answers conversation-control messages without rewriting or vector-store retrieval", async () => {
+    const response = await POST(
+      postRequest({
+        question: "hey, don't repeat answer",
+        history: [
+          { role: "user", text: "What is inventory tracking?" },
+          { role: "assistant", text: "Inventory tracking keeps a running count of stock." },
+        ],
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(CONVERSATION_CONTROL_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
   });
 
   it("falls back to a grounded, limitations-based answer when zero chunks clear the threshold", async () => {
@@ -108,7 +156,12 @@ describe("POST /api/support", () => {
     expect(payload.grounded).toBe(true);
     expect(payload.sources).toEqual([{ title: "Features we can't confirm yet", category: "limitations" }]);
     expect(retrieveChunksBySourcePathMock).toHaveBeenCalledWith("limitations/unsupported-features.md");
-    expect(generateAnswerMock).toHaveBeenCalledWith("Does it work offline?", ALL_LIMITATIONS_CHUNKS);
+    expect(generateAnswerMock).toHaveBeenCalledWith({
+      question: "Does it work offline?",
+      originalQuestion: "Does it work offline?",
+      history: [],
+      chunks: ALL_LIMITATIONS_CHUNKS,
+    });
   });
 
   it("returns the fixed fallback, never calling generation, when no limitations content can be found either", async () => {
@@ -124,14 +177,14 @@ describe("POST /api/support", () => {
   });
 
   it("degrades to the fixed fallback, never a raw error, if fetching the limitations content fails", async () => {
-    retrieveChunksBySourcePathMock.mockRejectedValue(new Error("supabase down"));
+    retrieveChunksBySourcePathMock.mockRejectedValue(new Error("vector store down"));
 
     const response = await POST(postRequest({ question: "What is inventory?" }));
     const payload = await response.json();
 
     expect(response.status).toBe(200);
     expect(payload.grounded).toBe(false);
-    expect(JSON.stringify(payload)).not.toContain("supabase down");
+    expect(JSON.stringify(payload)).not.toContain("vector store down");
   });
 
   it("returns a grounded answer with deduplicated sources when chunks are retrieved", async () => {
@@ -147,26 +200,15 @@ describe("POST /api/support", () => {
     expect(payload.sources).toEqual([{ title: "Inventory tracking", category: "inventory" }]);
   });
 
-  it("degrades to the fallback, never a raw error, when embedding fails", async () => {
-    embedQueryMock.mockRejectedValue(new Error("openai embeddings down"));
-
-    const response = await POST(postRequest({ question: "What is inventory?" }));
-    const payload = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(payload.grounded).toBe(false);
-    expect(JSON.stringify(payload)).not.toContain("openai embeddings down");
-  });
-
   it("degrades to the fallback when retrieval fails", async () => {
-    retrieveRelevantChunksMock.mockRejectedValue(new Error("supabase down"));
+    retrieveRelevantChunksMock.mockRejectedValue(new Error("vector store down"));
 
     const response = await POST(postRequest({ question: "What is inventory?" }));
     const payload = await response.json();
 
     expect(response.status).toBe(200);
     expect(payload.grounded).toBe(false);
-    expect(JSON.stringify(payload)).not.toContain("supabase down");
+    expect(JSON.stringify(payload)).not.toContain("vector store down");
   });
 
   it("degrades to the fallback when generation fails", async () => {
@@ -182,14 +224,13 @@ describe("POST /api/support", () => {
   });
 
   describe("greeting", () => {
-    it("short-circuits a bare greeting with a friendly welcome, before calling OpenAI/Supabase", async () => {
+    it("short-circuits a bare greeting before calling the OpenAI pipeline", async () => {
       const response = await POST(postRequest({ question: "Hello" }));
       const payload = await response.json();
 
       expect(response.status).toBe(200);
       expect(payload.answer).toBe(GREETING_RESPONSE);
       expect(payload.grounded).toBe(false);
-      expect(embedQueryMock).not.toHaveBeenCalled();
       expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
       expect(generateAnswerMock).not.toHaveBeenCalled();
     });
@@ -201,7 +242,12 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(payload.answer).not.toBe(GREETING_RESPONSE);
-      expect(generateAnswerMock).toHaveBeenCalledWith("Hi, does it work offline?", ALL_LIMITATIONS_CHUNKS);
+      expect(generateAnswerMock).toHaveBeenCalledWith({
+        question: "Hi, does it work offline?",
+        originalQuestion: "Hi, does it work offline?",
+        history: [],
+        chunks: ALL_LIMITATIONS_CHUNKS,
+      });
     });
   });
 
@@ -211,7 +257,7 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(payload.answer).toBe(SENSITIVE_DATA_RESPONSE);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("short-circuits real-account modification requests", async () => {
@@ -219,7 +265,7 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(payload.answer).toBe(REAL_ACCOUNT_RESPONSE);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("short-circuits legal/tax/financial advice requests", async () => {
@@ -227,7 +273,7 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(payload.answer).toBe(LEGAL_FINANCIAL_ADVICE_RESPONSE);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
   });
 
@@ -240,14 +286,14 @@ describe("POST /api/support", () => {
     it("returns 400 when history is not an array", async () => {
       const response = await POST(postRequest({ question: "How can I use it?", history: "nope" }));
       expect(response.status).toBe(400);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("returns 400 when history exceeds the turn limit", async () => {
-      const history = Array.from({ length: 7 }, () => ({ role: "user", text: "hi" }));
+      const history = Array.from({ length: MAX_HISTORY_TURNS + 1 }, () => ({ role: "user", text: "hi" }));
       const response = await POST(postRequest({ question: "How can I use it?", history }));
       expect(response.status).toBe(400);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("returns 400 for a malformed history entry", async () => {
@@ -255,10 +301,10 @@ describe("POST /api/support", () => {
         postRequest({ question: "How can I use it?", history: [{ role: "system", text: "x" }] })
       );
       expect(response.status).toBe(400);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
-    it("rewrites a vague follow-up using history before embedding", async () => {
+    it("rewrites a vague follow-up using history before vector-store retrieval", async () => {
       rewriteQuestionWithHistoryMock.mockResolvedValue("How do I use inventory tracking?");
       retrieveRelevantChunksMock.mockResolvedValue([CHUNK]);
       generateAnswerMock.mockResolvedValue("Inventory tracking explanation.");
@@ -271,8 +317,17 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(rewriteQuestionWithHistoryMock).toHaveBeenCalledWith("How can I use it?", history);
-      expect(embedQueryMock).toHaveBeenCalledWith("How do I use inventory tracking?");
-      expect(generateAnswerMock).toHaveBeenCalledWith("How do I use inventory tracking?", [CHUNK]);
+      expect(retrieveRelevantChunksMock).toHaveBeenCalledWith({
+        query: "How do I use inventory tracking?",
+        similarityThreshold: 0.35,
+        maxChunks: 4,
+      });
+      expect(generateAnswerMock).toHaveBeenCalledWith({
+        question: "How do I use inventory tracking?",
+        originalQuestion: "How can I use it?",
+        history,
+        chunks: [CHUNK],
+      });
       expect(payload.grounded).toBe(true);
     });
 
@@ -290,7 +345,7 @@ describe("POST /api/support", () => {
       expect(response.status).toBe(200);
       expect(payload.grounded).toBe(false);
       expect(JSON.stringify(payload)).not.toContain("openai rewrite down");
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("re-checks guardrails on the rewritten question and short-circuits if it now matches", async () => {
@@ -305,7 +360,7 @@ describe("POST /api/support", () => {
       const payload = await response.json();
 
       expect(payload.answer).toBe(REAL_ACCOUNT_RESPONSE);
-      expect(embedQueryMock).not.toHaveBeenCalled();
+      expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     });
 
     it("falls back to grounded, limitations-based generation when the rewritten question has no matching chunks", async () => {
@@ -322,8 +377,17 @@ describe("POST /api/support", () => {
 
       expect(payload.grounded).toBe(true);
       expect(payload.answer).toBe("We don't have confirmed pricing to share yet.");
-      expect(embedQueryMock).toHaveBeenCalledWith("How much does the Pro plan cost?");
-      expect(generateAnswerMock).toHaveBeenCalledWith("How much does the Pro plan cost?", ALL_LIMITATIONS_CHUNKS);
+      expect(retrieveRelevantChunksMock).toHaveBeenCalledWith({
+        query: "How much does the Pro plan cost?",
+        similarityThreshold: 0.35,
+        maxChunks: 4,
+      });
+      expect(generateAnswerMock).toHaveBeenCalledWith({
+        question: "How much does the Pro plan cost?",
+        originalQuestion: "What about the paid one?",
+        history: [{ role: "user", text: "Does S.C.O.R.E. have a paid plan?" }],
+        chunks: ALL_LIMITATIONS_CHUNKS,
+      });
     });
   });
 

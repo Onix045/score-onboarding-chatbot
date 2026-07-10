@@ -4,7 +4,7 @@ import { MessageBubble } from "./MessageBubble";
 import type { ChatMessage } from "@/lib/chat/types";
 
 describe("MessageBubble", () => {
-  it("renders a grounded assistant answer without a sources line or confirmation tag", () => {
+  it("renders a grounded assistant answer without sources or feedback controls", () => {
     const message: ChatMessage = {
       id: "1",
       role: "assistant",
@@ -17,12 +17,12 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText(message.text)).toBeInTheDocument();
     expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Not yet confirmed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Was this helpful?")).not.toBeInTheDocument();
   });
 
-  it("renders an unconfirmed fallback answer without a sources line or confirmation tag", () => {
+  it("renders an unconfirmed fallback answer without a sources line", () => {
     const message: ChatMessage = {
-      id: "2",
+      id: "4",
       role: "assistant",
       text: "I don't have confirmed information about that feature yet.",
       grounded: false,
@@ -33,16 +33,16 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText(message.text)).toBeInTheDocument();
     expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Not yet confirmed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Was this helpful?")).not.toBeInTheDocument();
   });
 
   it("renders a plain user message without sources or confirmation state", () => {
-    const message: ChatMessage = { id: "3", role: "user", text: "What is inventory?" };
+    const message: ChatMessage = { id: "5", role: "user", text: "What is inventory?" };
 
     render(<MessageBubble message={message} />);
 
     expect(screen.getByText(message.text)).toBeInTheDocument();
     expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Not yet confirmed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Was this helpful?")).not.toBeInTheDocument();
   });
 });

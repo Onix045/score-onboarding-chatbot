@@ -5,9 +5,11 @@ const KNOWLEDGE_ROOT = join(process.cwd(), "content", "knowledge");
 
 async function main() {
   const summary = await ingestKnowledgeBase(KNOWLEDGE_ROOT);
-  console.log(`Processed ${summary.filesProcessed} files, wrote ${summary.chunksWritten} chunks.`);
+  console.log(`Vector store: ${summary.vectorStoreId}`);
+  console.log(`Processed ${summary.filesProcessed} files.`);
+  console.log(`Removed ${summary.filesRemoved} stale files.`);
   for (const result of summary.results) {
-    console.log(`  ${result.sourcePath}: ${result.chunkCount} chunks`);
+    console.log(`  ${result.sourcePath}: ${result.fileId}`);
   }
 }
 

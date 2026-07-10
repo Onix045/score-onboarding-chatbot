@@ -1,39 +1,48 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildChunksForFile, embedChunks, ingestKnowledgeBase, listMarkdownFiles } from "./ingest";
-import type { DocumentChunk } from "./types";
+import { ingestKnowledgeBase, listMarkdownFiles, parseKnowledgeFile, replaceVectorStoreFile } from "./ingest";
 
-const embedTextsMock = vi.fn();
-const deleteEqMock = vi.fn();
-const insertMock = vi.fn();
-const fromMock = vi.fn();
+const listFilesMock = vi.fn();
+const createFileMock = vi.fn();
+const pollMock = vi.fn();
+const uploadFileMock = vi.fn();
+const deleteFileMock = vi.fn();
 
 vi.mock("@/lib/clients/openai", () => ({
-  embedTexts: (texts: string[]) => embedTextsMock(texts),
-}));
-
-vi.mock("@/lib/clients/supabase", () => ({
-  getSupabaseServiceRoleClient: () => ({
-    from: (table: string) => fromMock(table),
+  getOpenAIClient: () => ({
+    files: {
+      create: (...args: unknown[]) => uploadFileMock(...args),
+      delete: (...args: unknown[]) => deleteFileMock(...args),
+    },
+    vectorStores: {
+      files: {
+        list: (...args: unknown[]) => listFilesMock(...args),
+        create: (...args: unknown[]) => createFileMock(...args),
+        poll: (...args: unknown[]) => pollMock(...args),
+      },
+    },
   }),
+  getOrCreateVectorStoreIdForIngestion: async () => "vs_test123",
 }));
 
 const KNOWLEDGE_ROOT = join(process.cwd(), "content", "knowledge");
 
 beforeEach(() => {
-  embedTextsMock.mockReset();
-  deleteEqMock.mockReset();
-  insertMock.mockReset();
-  fromMock.mockReset();
+  listFilesMock.mockReset();
+  createFileMock.mockReset();
+  pollMock.mockReset();
+  uploadFileMock.mockReset();
+  deleteFileMock.mockReset();
 
-  embedTextsMock.mockImplementation(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
-  deleteEqMock.mockResolvedValue({ error: null });
-  insertMock.mockResolvedValue({ error: null });
-  fromMock.mockImplementation(() => ({
-    delete: () => ({ eq: deleteEqMock }),
-    insert: insertMock,
+  listFilesMock.mockReturnValue([]);
+  uploadFileMock.mockImplementation(async () => ({ id: `file_${Math.random()}` }));
+  createFileMock.mockResolvedValue({});
+  pollMock.mockImplementation(async (_vectorStoreId: string, fileId: string) => ({
+    id: fileId,
+    status: "completed",
   }));
+  deleteFileMock.mockResolvedValue({});
 });
 
 describe("listMarkdownFiles", () => {
@@ -44,60 +53,95 @@ describe("listMarkdownFiles", () => {
   });
 });
 
-describe("buildChunksForFile", () => {
-  it("parses frontmatter and chunks a real knowledge file", () => {
+describe("parseKnowledgeFile", () => {
+  it("parses frontmatter from a real knowledge file, stripping it from the body", () => {
     const filePath = join(KNOWLEDGE_ROOT, "inventory", "inventory-tracking.md");
     const rawContent = readFileSync(filePath, "utf8");
 
-    const chunks = buildChunksForFile(rawContent, filePath, KNOWLEDGE_ROOT);
+    const parsed = parseKnowledgeFile(rawContent, filePath, KNOWLEDGE_ROOT);
 
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(chunks[0].sourcePath).toBe("inventory/inventory-tracking.md");
-    expect(chunks[0].category).toBe("inventory");
-    expect(chunks[0].title).toBe("Inventory tracking");
+    expect(parsed.sourcePath).toBe("inventory/inventory-tracking.md");
+    expect(parsed.category).toBe("inventory");
+    expect(parsed.title).toBe("Inventory tracking");
+    expect(parsed.body.length).toBeGreaterThan(0);
+    expect(parsed.body).not.toMatch(/^---/);
   });
 });
 
-describe("embedChunks", () => {
-  it("normalizes the dotted acronym in chunk content before embedding, without altering stored content", async () => {
-    const chunk: DocumentChunk = {
-      id: "overview/what-is-score.md#0",
-      sourcePath: "overview/what-is-score.md",
-      category: "overview",
-      title: "What is S.C.O.R.E.?",
-      chunkIndex: 0,
-      content: "S.C.O.R.E. helps small businesses manage inventory.",
-      tokenCount: 10,
-    };
+describe("replaceVectorStoreFile", () => {
+  const FILE = {
+    sourcePath: "overview/what-is-score.md",
+    category: "overview" as const,
+    title: "What is S.C.O.R.E.?",
+    body: "S.C.O.R.E. helps small businesses manage inventory.",
+  };
 
-    const [embedded] = await embedChunks([chunk]);
+  it("deletes previous versions only after the replacement is indexed", async () => {
+    uploadFileMock.mockResolvedValue({ id: "file_new" });
+    await replaceVectorStoreFile(FILE, "vs_test123", [
+      { id: "old_file_1", attributes: { sourcePath: FILE.sourcePath } },
+    ]);
 
-    expect(embedTextsMock).toHaveBeenCalledWith(["SCORE helps small businesses manage inventory."]);
-    expect(embedded.content).toBe("S.C.O.R.E. helps small businesses manage inventory.");
+    expect(deleteFileMock).toHaveBeenCalledTimes(1);
+    expect(deleteFileMock).toHaveBeenCalledWith("old_file_1");
+    expect(pollMock.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteFileMock.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("uploads the file and attaches it with sourcePath/category/title attributes", async () => {
+    uploadFileMock.mockResolvedValue({ id: "file_new" });
+
+    const fileId = await replaceVectorStoreFile(FILE, "vs_test123", []);
+
+    expect(fileId).toBe("file_new");
+    expect(createFileMock).toHaveBeenCalledWith("vs_test123", {
+      file_id: "file_new",
+      attributes: {
+        sourcePath: "overview/what-is-score.md",
+        category: "overview",
+        title: "What is S.C.O.R.E.?",
+        managedBy: "score-ingest",
+      },
+      chunking_strategy: {
+        type: "static",
+        static: { max_chunk_size_tokens: 400, chunk_overlap_tokens: 80 },
+      },
+    });
+    expect(pollMock).toHaveBeenCalledWith("vs_test123", "file_new");
+  });
+
+  it("throws a descriptive error when the file fails to process", async () => {
+    uploadFileMock.mockResolvedValue({ id: "file_bad" });
+    pollMock.mockResolvedValue({
+      id: "file_bad",
+      status: "failed",
+      last_error: { message: "unsupported file" },
+    });
+
+    await expect(replaceVectorStoreFile(FILE, "vs_test123", [])).rejects.toThrow(
+      /unsupported file/
+    );
+    expect(deleteFileMock).toHaveBeenCalledWith("file_bad");
+  });
+
+  it("propagates an upload failure", async () => {
+    uploadFileMock.mockRejectedValue(new Error("openai upload down"));
+    await expect(replaceVectorStoreFile(FILE, "vs_test123", [])).rejects.toThrow(
+      "openai upload down"
+    );
   });
 });
 
 describe("ingestKnowledgeBase", () => {
-  it("processes every real knowledge file, embedding and replacing chunks per source", async () => {
+  it("processes every real knowledge file, uploading and replacing per source", async () => {
     const summary = await ingestKnowledgeBase(KNOWLEDGE_ROOT);
 
     expect(summary.filesProcessed).toBeGreaterThanOrEqual(8);
-    expect(summary.chunksWritten).toBeGreaterThan(0);
+    expect(summary.vectorStoreId).toBe("vs_test123");
+    expect(summary.filesRemoved).toBe(0);
     expect(summary.results).toHaveLength(summary.filesProcessed);
-
-    expect(embedTextsMock).toHaveBeenCalledTimes(summary.filesProcessed);
-    expect(fromMock).toHaveBeenCalledWith("document_chunks");
-    expect(deleteEqMock).toHaveBeenCalledTimes(summary.filesProcessed);
-    expect(insertMock).toHaveBeenCalledTimes(summary.filesProcessed);
-  });
-
-  it("throws a descriptive error when Supabase deletion fails", async () => {
-    deleteEqMock.mockResolvedValueOnce({ error: { message: "boom" } });
-    await expect(ingestKnowledgeBase(KNOWLEDGE_ROOT)).rejects.toThrow(/Failed to delete existing chunks/);
-  });
-
-  it("propagates an OpenAI embeddings failure", async () => {
-    embedTextsMock.mockRejectedValueOnce(new Error("openai embeddings down"));
-    await expect(ingestKnowledgeBase(KNOWLEDGE_ROOT)).rejects.toThrow("openai embeddings down");
+    expect(uploadFileMock).toHaveBeenCalledTimes(summary.filesProcessed);
+    expect(createFileMock).toHaveBeenCalledTimes(summary.filesProcessed);
   });
 });

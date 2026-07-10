@@ -1,11 +1,15 @@
 import OpenAI from "openai";
 
-// Pinned in one place: the embedding model's output dimension must match the
-// document_chunks.embedding vector(512) column. text-embedding-3-small
-// supports the `dimensions` parameter to request a shorter output at the
-// same price, so we ask for exactly 512 rather than changing the schema.
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const EMBEDDING_DIMENSIONS = 512;
+// Pinned once here rather than duplicated in generate.ts and rewrite.ts —
+// both chat-completion call sites import this instead of hardcoding their
+// own copy of the model name.
+export const CHAT_MODEL = "gpt-4o-mini";
+
+// The one vector store this app uses, looked up by name rather than a
+// stored ID — avoids needing an env var or any persistence layer at all,
+// matching CLAUDE.md's "no database" constraint. Created on first use if it
+// doesn't exist yet (normally that's during `npm run ingest`).
+export const VECTOR_STORE_NAME = "score-knowledge-base";
 
 let cachedClient: OpenAI | null = null;
 
@@ -29,18 +33,31 @@ export function getOpenAIClient(): OpenAI {
   return cachedClient;
 }
 
-export async function embedTexts(texts: string[]): Promise<number[][]> {
-  if (texts.length === 0) return [];
+/**
+ * Runtime retrieval is deliberately read-only with respect to
+ * infrastructure. A support request must never create an empty vector
+ * store because configuration is missing.
+ */
+export function getRequiredVectorStoreId(): string {
+  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_ID?.trim();
+  if (!vectorStoreId) throw new Error("OPENAI_VECTOR_STORE_ID is not set");
+  return vectorStoreId;
+}
+
+/**
+ * Provisioning helper used only by the manual ingestion command. Existing
+ * deployments should configure OPENAI_VECTOR_STORE_ID; first-time setup may
+ * discover or create the named store and then persist the returned ID.
+ */
+export async function getOrCreateVectorStoreIdForIngestion(): Promise<string> {
+  const configuredId = process.env.OPENAI_VECTOR_STORE_ID?.trim();
+  if (configuredId) return configuredId;
 
   const client = getOpenAIClient();
-  const response = await client.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: texts,
-    dimensions: EMBEDDING_DIMENSIONS,
-  });
+  for await (const store of client.vectorStores.list({ order: "asc" })) {
+    if (store.name === VECTOR_STORE_NAME) return store.id;
+  }
 
-  return response.data
-    .slice()
-    .sort((a, b) => a.index - b.index)
-    .map((item) => item.embedding);
+  const created = await client.vectorStores.create({ name: VECTOR_STORE_NAME });
+  return created.id;
 }

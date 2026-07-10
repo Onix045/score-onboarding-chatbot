@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { embedQuery } from "@/lib/rag/embed";
 import { UNSUPPORTED_FEATURE_FALLBACK } from "@/lib/rag/fallback";
 import { generateAnswer } from "@/lib/rag/generate";
 import { checkGreeting } from "@/lib/rag/greeting";
 import { checkGuardrails } from "@/lib/rag/guardrails";
+import { CONVERSATION_CONTROL_RESPONSE, detectConversationIntent } from "@/lib/rag/intent";
 import { checkRateLimit } from "@/lib/rag/rateLimit";
 import { retrieveChunksBySourcePath, retrieveRelevantChunks } from "@/lib/rag/retrieve";
 import { rewriteQuestionWithHistory } from "@/lib/rag/rewrite";
@@ -11,13 +11,26 @@ import type { ChatHistoryTurn, RetrievedChunk, SourceCitation, SupportAnswer } f
 import { QuestionValidationError, validateHistory, validateQuestion } from "@/lib/rag/validate";
 import { withRetry } from "@/lib/rag/withRetry";
 
-function getEnvNumber(name: string, fallback: number): number {
+function getEnvNumber(
+  name: string,
+  fallback: number,
+  { min, max, integer = false }: { min: number; max: number; integer?: boolean }
+): number {
   const parsed = Number(process.env[name]);
-  return Number.isFinite(parsed) && process.env[name] ? parsed : fallback;
+  if (!process.env[name] || !Number.isFinite(parsed)) return fallback;
+  const normalized = integer ? Math.trunc(parsed) : parsed;
+  return normalized >= min && normalized <= max ? normalized : fallback;
 }
 
-const SIMILARITY_THRESHOLD = getEnvNumber("RAG_SIMILARITY_THRESHOLD", 0.35);
-const MAX_CHUNKS = getEnvNumber("RAG_MAX_CHUNKS", 4);
+const SIMILARITY_THRESHOLD = getEnvNumber("RAG_SIMILARITY_THRESHOLD", 0.35, {
+  min: 0,
+  max: 1,
+});
+const MAX_CHUNKS = getEnvNumber("RAG_MAX_CHUNKS", 4, {
+  min: 1,
+  max: 4,
+  integer: true,
+});
 
 // The confirmed "not yet available" content (CLAUDE.md §2) — the grounding
 // of last resort so every question still gets a real, generated answer
@@ -26,7 +39,18 @@ const LIMITATIONS_SOURCE_PATH = "limitations/unsupported-features.md";
 
 // Basic in-memory abuse protection suitable for a single-instance prototype
 // demo — not a substitute for production-grade rate limiting.
-const RATE_LIMIT_OPTIONS = { limit: 20, windowMs: 60_000 };
+const RATE_LIMIT_OPTIONS = {
+  limit: getEnvNumber("RAG_RATE_LIMIT_MAX_REQUESTS", 20, {
+    min: 1,
+    max: 1_000,
+    integer: true,
+  }),
+  windowMs: getEnvNumber("RAG_RATE_LIMIT_WINDOW_MS", 60_000, {
+    min: 1_000,
+    max: 3_600_000,
+    integer: true,
+  }),
+};
 
 function getClientIdentifier(request: Request): string {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -66,7 +90,7 @@ function logServerError(label: string, error: unknown): void {
  * or legal-financial-advice — honesty/safety refusals with no knowledge-
  * base content to ground against). Every other question, including ones
  * about unconfirmed topics like pricing or hardware, goes through the same
- * embed → retrieve → generate pipeline. When zero retrieved chunks clear
+ * vector-store retrieve → generate pipeline. When zero retrieved chunks clear
  * the similarity threshold, the route doesn't return the fixed string
  * directly — it falls back to the confirmed "not yet available" content
  * (content/knowledge/limitations/unsupported-features.md) as evidence and
@@ -74,8 +98,8 @@ function logServerError(label: string, error: unknown): void {
  * relevant reply instead of canned text for any question. The fixed string
  * is reserved for true failure: it fires only when that limitations
  * content itself can't be found, or when any upstream step (history
- * rewrite, embed, retrieve, generate) throws even after one withRetry
- * attempt — this environment has observed transient OpenAI/Supabase
+ * rewrite, retrieve, generate) throws even after one withRetry
+ * attempt — this environment has observed transient OpenAI
  * connection failures that a single retry usually recovers from, so a lone
  * flaky call isn't the difference between a real answer and the fallback.
  * The caller never
@@ -144,6 +168,11 @@ export async function POST(request: Request) {
     return NextResponse.json(response);
   }
 
+  if (detectConversationIntent(validatedQuestion) === "conversation_control") {
+    const response: SupportAnswer = { answer: CONVERSATION_CONTROL_RESPONSE, grounded: false, sources: [] };
+    return NextResponse.json(response);
+  }
+
   let resolvedQuestion = validatedQuestion;
   if (history.length > 0) {
     try {
@@ -160,25 +189,17 @@ export async function POST(request: Request) {
     }
   }
 
-  let queryEmbedding: number[];
-  try {
-    queryEmbedding = await withRetry(() => embedQuery(resolvedQuestion));
-  } catch (error) {
-    logServerError("OpenAI embedding failed:", error);
-    return NextResponse.json(fallbackResponse());
-  }
-
   let chunks: RetrievedChunk[];
   try {
     chunks = await withRetry(() =>
       retrieveRelevantChunks({
-        queryEmbedding,
+        query: resolvedQuestion,
         similarityThreshold: SIMILARITY_THRESHOLD,
         maxChunks: MAX_CHUNKS,
       })
     );
   } catch (error) {
-    logServerError("Supabase retrieval failed:", error);
+    logServerError("Vector store retrieval failed:", error);
     return NextResponse.json(fallbackResponse());
   }
 
@@ -186,7 +207,7 @@ export async function POST(request: Request) {
     try {
       chunks = await withRetry(() => retrieveChunksBySourcePath(LIMITATIONS_SOURCE_PATH));
     } catch (error) {
-      logServerError("Supabase limitations retrieval failed:", error);
+      logServerError("Vector store limitations retrieval failed:", error);
       return NextResponse.json(fallbackResponse());
     }
 
@@ -196,7 +217,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const answer = await withRetry(() => generateAnswer(resolvedQuestion, chunks));
+    const answer = await withRetry(() =>
+      generateAnswer({ question: resolvedQuestion, originalQuestion: validatedQuestion, history, chunks })
+    );
     const response: SupportAnswer = { answer, grounded: true, sources: toSources(chunks) };
     return NextResponse.json(response);
   } catch (error) {

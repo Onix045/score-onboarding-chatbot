@@ -3,7 +3,7 @@
 **Status: manual and optional.** Not CI-blocking — the automated golden-question
 suite (`lib/rag/goldenQuestions.test.ts`) covers routing logic against mocked
 boundaries. This checklist is for a human to periodically run against the real,
-deployed pipeline (real OpenAI/Supabase credentials) to judge answer
+deployed pipeline (real OpenAI credentials and vector store) to judge answer
 *quality*, which automated tests can't score.
 
 ## Desktop chat behavior
@@ -52,9 +52,9 @@ Run each of the golden "unsupported" and "adversarial" questions and judge:
 
 ## API failure behavior
 
-- [ ] Temporarily using an invalid `OPENAI_API_KEY`/`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`
+- [ ] Temporarily using an invalid `OPENAI_API_KEY` or `OPENAI_VECTOR_STORE_ID`
       still returns the safe fallback, never a raw error, to the browser
-- [ ] Server logs show which upstream failed (OpenAI rewrite/OpenAI embedding/Supabase/OpenAI generation) without any secret value
+- [ ] Server logs show which upstream failed (OpenAI rewrite/OpenAI vector search/OpenAI generation) without any secret value
 
 ## Deployment verification
 

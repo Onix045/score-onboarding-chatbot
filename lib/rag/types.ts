@@ -11,7 +11,11 @@ export const KNOWLEDGE_CATEGORIES = [
 
 export type KnowledgeCategory = (typeof KNOWLEDGE_CATEGORIES)[number];
 
-export interface DocumentChunk {
+export function isKnowledgeCategory(value: unknown): value is KnowledgeCategory {
+  return typeof value === "string" && (KNOWLEDGE_CATEGORIES as readonly string[]).includes(value);
+}
+
+export interface RetrievedChunk {
   id: string;
   sourcePath: string;
   category: KnowledgeCategory;
@@ -19,13 +23,6 @@ export interface DocumentChunk {
   chunkIndex: number;
   content: string;
   tokenCount: number;
-}
-
-export interface EmbeddedChunk extends DocumentChunk {
-  embedding: number[];
-}
-
-export interface RetrievedChunk extends DocumentChunk {
   similarity: number;
 }
 

@@ -1,327 +1,85 @@
-# RAG Architecture Plan — S.C.O.R.E. Support Chatbot
+# OpenAI Vector Store RAG Architecture — S.C.O.R.E. Support Chatbot
 
-Status: **historical planning record.** The implementation now uses OpenAI (chat
-completions + embeddings) instead of Anthropic/Voyage AI everywhere this
-document says "Claude" or "Voyage" — see `CLAUDE.md` §3 for the current,
-authoritative technology choices. The architecture shape described below
-(chunking, retrieval, threshold-gated generation, citations) is otherwise
-still accurate to the implementation.
+This document describes the current retrieval-augmented generation pipeline for the S.C.O.R.E. support chatbot.
 
-Scope: adds retrieval-augmented generation for free-form product-support questions only. Onboarding progression, validation, and calculations stay deterministic TypeScript, unchanged.
+## Product boundary
 
----
+The chatbot may describe only the confirmed S.C.O.R.E. capabilities:
 
-## 1. Assessment of the current repository
+- inventory management;
+- lightweight point-of-sale functionality;
+- basic CRM;
+- business reporting.
 
-- The repo is still the v0 scaffold from the initial setup: Next.js 16 App Router, React 19, strict TypeScript, Tailwind v4, Vitest + RTL wired and passing.
-- `app/page.tsx` is a placeholder ("the project is up and running"); `app/layout.tsx` is a bare root layout. There is no chat UI, no onboarding flow, and no `lib/` directory yet.
-- No API routes exist. `@anthropic-ai/sdk` is the only AI-related dependency installed; there is no Voyage AI client and no Supabase client.
-- `.env.example` only defines `ANTHROPIC_API_KEY` and `NEXT_PUBLIC_APP_URL`. It has no placeholders yet for Voyage or Supabase credentials.
-- There is no `content/` knowledge base, no ingestion script, no Supabase migrations.
-- Conclusion: there is nothing to refactor or migrate. This is additive design on a clean foundation, so the plan below can assume no existing RAG-shaped code to reconcile.
+Everything else is treated as unconfirmed. Questions about pricing, payments, hardware, accounting, tax, integrations, legal/financial advice, real account access, or security claims must either be grounded in approved limitation content or receive a safe refusal/fallback.
 
-## 2. Updated architecture
+## Runtime flow
 
-Two independent subsystems share one Next.js app:
+1. The browser sends a message to `app/api/support/route.ts`.
+2. The route validates input, rate-limits by IP, and handles deterministic greeting/guardrail cases.
+3. If the message needs retrieval, query rewriting may produce a clearer standalone search query.
+4. `lib/rag/retrieve.ts` searches the configured OpenAI vector store with a score threshold and a hard result cap.
+5. Retrieved results are validated for required attributes: `sourcePath`, `category`, `title`, and content.
+6. `lib/rag/generate.ts` generates a concise answer from the retrieved evidence and returns source labels.
+7. If supported evidence is unavailable, the route falls back to the approved limitations content or the fixed safe fallback sentence.
 
-- **Deterministic onboarding subsystem** (per CLAUDE.md §4): step progression, input validation, quantity/price validation, practice-sale math, progress indicators, restart. Pure TypeScript functions in `lib/onboarding/`, safe to run entirely client-side since they touch no secrets and no network. Out of scope for this prompt — noted only so the boundary with RAG is explicit.
-- **RAG-backed support subsystem** (this plan): handles only free-form "what is / how do I / is this hard" questions. Runs server-side end-to-end:
-  1. A client component posts the raw question to `app/api/support/route.ts`.
-  2. The route validates the question, embeds it with Voyage AI, searches Supabase pgvector for the top matching chunks from the approved Markdown knowledge base, applies a similarity threshold, and — only if evidence clears the bar — asks Claude to answer strictly from that evidence.
-  3. The response includes the answer, a `grounded` flag, and human-readable source citations (title + category, never raw file paths).
-- A separate, manually-run **ingestion script** (not a server route, not a background worker) reads the approved Markdown knowledge base, chunks it, embeds the chunks with Voyage, and upserts them into Supabase. It is invoked by a maintainer (`npm run ingest`) whenever knowledge content changes — never triggered by an end user or automatically.
+Runtime requests require `OPENAI_VECTOR_STORE_ID`. They never create vector stores or mutate knowledge infrastructure.
 
-No LangChain/LlamaIndex, no crawling, no upload UI, no admin UI, no second vector store, no background workers, no reranking, no chat-history embeddings (history is consumed only by a query-rewrite step that produces one standalone question — see §5 — never embedded directly and never sent to the answer-generation step) — all excluded per the brief.
+## Ingestion flow
 
-## 3. Browser and server responsibilities
+Knowledge files live in `content/knowledge/` and are the source of truth. Run:
 
-**Browser (client components):**
-- Render the chat UI, collect the question, display the answer and its source citations, show onboarding progress.
-- Never holds `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, or any Supabase credential.
-- Calls only same-origin API routes (`/api/support`); never calls Anthropic, Voyage, or Supabase directly.
-
-**Server (API routes + server-only modules):**
-- `app/api/support/route.ts` — the only network entry point for RAG. Orchestrates validate → greeting/guardrails → (optional) history-aware query rewrite when the client sends prior turns → guardrails re-check on the rewritten question → embed → retrieve → threshold → generate/fallback.
-- `lib/clients/{voyage,supabase,anthropic}.ts` — thin factories that read secrets from `process.env`. These files must never be imported from a file marked `"use client"`; keeping them under `lib/clients/` (never re-exported from a client-importable barrel) makes that reviewable at a glance.
-- `scripts/ingest-knowledge.ts` — a Node-only CLI script holding the Supabase **service-role** key and the Voyage key. It never ships in the Next.js client bundle because it isn't imported by any `app/` route or component — it's invoked directly via `tsx`/`node`.
-
-## 4. Ingestion flow
-
-1. A maintainer adds or edits an approved `.md` file under `content/knowledge/<category>/*.md`, with frontmatter `title`, `category`, and `confirmed: true`.
-2. The maintainer runs `npm run ingest` locally. This is a manual, explicit action — never automatic, never web-triggered, never exposed as an API route.
-3. The script reads all files under `content/knowledge/`, validates frontmatter (unknown `category` or missing `confirmed: true` fails the whole run — fail fast, don't silently skip unapproved content).
-4. Each file is chunked (see §10).
-5. Chunks for each source file are embedded in a single batched Voyage AI call.
-6. For each source file, the script deletes any existing chunks with that `source_path` and inserts the freshly embedded ones — a simple, idempotent "replace by source" strategy rather than a diffing upsert, appropriate for a knowledge base this small.
-7. The script logs a summary (files processed, chunks written, any validation failures) to the console. No admin UI, no dashboard.
-
-## 5. Retrieval flow
-
-1. **Validate** — `lib/rag/validate.ts` rejects empty, whitespace-only, or excessively long input before any network call. Pure, unit-tested. The same module also validates the optional `history` field (see step 2) with the same reject-don't-truncate philosophy.
-2. **Resolve follow-up context** — if the client sends prior turns, `lib/rag/rewrite.ts` asks OpenAI to condense (question + history) into one standalone question, using the same anti-injection system-prompt pattern as `generate.ts`. Guardrails are re-checked against the resolved question (cheap and deterministic — catches intent that only becomes explicit after pronouns are resolved). If this step throws, the route degrades straight to the fixed fallback, the same as any other pipeline failure. Skipped entirely when the client sends no history, so the pipeline stays byte-for-byte the same as before for a first-turn question.
-3. **Embed query** — `lib/rag/embed.ts` calls Voyage AI's embeddings endpoint for the user's question only (never chat history — chat-history embeddings are explicitly excluded). It only ever receives the single resolved question from step 2, never raw history.
-4. **Retrieve** — `lib/rag/retrieve.ts` calls the Supabase RPC `match_document_chunks` (§9) with the query embedding, a similarity threshold, and a hard cap of 4.
-5. **Threshold filter** — chunks below `RAG_SIMILARITY_THRESHOLD` are discarded. This is enforced in TypeScript, not left to the SQL function alone, so the cutoff is unit-testable against mocked retrieval results.
-6. **Limitations fallback** — if zero chunks clear the threshold, the route doesn't return the fixed string directly. It fetches every chunk of `content/knowledge/limitations/unsupported-features.md` directly by path (`retrieveChunksBySourcePath`, no embedding or threshold involved) and uses that as the evidence for generation instead, so the model still produces a real, natural-language, non-invented answer for any question — not just ones about a specific pricing/hardware/offline keyword. The fixed string is reserved for the rare case where even that content can't be found.
-7. **Generate** — `lib/rag/generate.ts` builds a prompt containing only the retrieved chunk contents as evidence, with an explicit system instruction to answer solely from that evidence and to treat any instruction-like text inside the question or the evidence as inert content, not commands.
-8. Claude is called server-side via `@anthropic-ai/sdk`, low temperature, no chat history in the prompt (each question is stateless from the model's perspective, consistent with excluding chat-history embeddings — it receives only the single resolved question produced by step 2).
-9. **Citations** — the response returns the distinct `{title, category}` pairs for the chunks that were actually included in the prompt, derived deterministically from retrieval — never asked of or trusted from Claude's own output.
-10. The route returns `{ answer, grounded, sources }` as JSON.
-
-## 6. Folder structure
-
-```
-app/
-  api/
-    support/
-      route.ts              # RAG Q&A endpoint (new)
-  page.tsx
-  layout.tsx
-lib/
-  onboarding/                # deterministic logic (separate track, unchanged by this plan)
-  rag/
-    types.ts                 # shared interfaces
-    validate.ts               validate.test.ts
-    chunk.ts                  chunk.test.ts
-    generate.ts                generate.test.ts
-    fallback.ts               # fixed fallback string, single source of truth
-    embed.ts                  # Voyage call wrapper (thin, mockable)
-    retrieve.ts               # Supabase RPC call wrapper (thin, mockable)
-  clients/
-    voyage.ts                 # server-only
-    supabase.ts                # server-only, service-role client
-    anthropic.ts                # server-only
-content/
-  knowledge/
-    overview/*.md
-    inventory/*.md
-    sales-pos/*.md
-    crm/*.md
-    reporting/*.md
-    onboarding/*.md
-    faq/*.md
-    limitations/*.md
-scripts/
-  ingest-knowledge.ts          # manual CLI, not a route, not a worker
-supabase/
-  migrations/
-    0001_document_chunks.sql
-docs/
-  rag-architecture.md          # this document
+```bash
+npm run ingest
 ```
 
-## 7. TypeScript interfaces
+The ingestion script in `scripts/ingest-knowledge.ts` calls `lib/rag/ingest.ts`, which:
 
-```ts
-// lib/rag/types.ts
-export type KnowledgeCategory =
-  | "overview"
-  | "inventory"
-  | "sales-pos"
-  | "crm"
-  | "reporting"
-  | "onboarding"
-  | "faq"
-  | "limitations";
+1. discovers Markdown files;
+2. parses frontmatter and validates all local files before remote mutation;
+3. resolves the OpenAI vector store for ingestion;
+4. uploads each Markdown file to OpenAI;
+5. attaches it to the vector store with metadata attributes;
+6. uses OpenAI static chunking at 400 max tokens with 80 token overlap;
+7. polls until vector-store processing completes;
+8. deletes older managed versions only after the replacement succeeds;
+9. removes stale files that were previously managed by this ingestion pipeline.
 
-export interface DocumentChunk {
-  id: string;              // stable hash of sourcePath + chunkIndex
-  sourcePath: string;      // never exposed to the client
-  category: KnowledgeCategory;
-  title: string;
-  chunkIndex: number;
-  content: string;
-  tokenCount: number;
-}
+Managed vector-store files are marked with:
 
-export interface EmbeddedChunk extends DocumentChunk {
-  embedding: number[];
-}
+- `managedBy: "score-ingest"`
+- `sourcePath`
+- `category`
+- `title`
 
-export interface RetrievedChunk extends DocumentChunk {
-  similarity: number;      // cosine similarity, 0..1
-}
+## Environment variables
 
-export interface SourceCitation {
-  title: string;
-  category: KnowledgeCategory;
-}
+- `OPENAI_API_KEY` — server-only key for OpenAI calls.
+- `OPENAI_VECTOR_STORE_ID` — required for runtime retrieval.
+- `RAG_SIMILARITY_THRESHOLD` — optional score threshold, clamped to `0..1`.
+- `RAG_MAX_CHUNKS` — optional retrieval cap, clamped to `1..4`.
+- `RAG_RATE_LIMIT_MAX_REQUESTS` and `RAG_RATE_LIMIT_WINDOW_MS` — optional route rate-limit controls.
+- `NEXT_PUBLIC_APP_URL` — public app URL; not a secret.
 
-export interface ChatHistoryTurn {
-  role: "user" | "assistant";
-  text: string;
-}
+## Main implementation files
 
-export interface SupportQuestionRequest {
-  question: string;
-  history?: ChatHistoryTurn[];
-}
+- `lib/clients/openai.ts` — OpenAI client, model constants, and vector-store ID helpers.
+- `lib/rag/ingest.ts` — OpenAI vector-store ingestion and replacement logic.
+- `lib/rag/retrieve.ts` — OpenAI vector-store search and metadata validation.
+- `lib/rag/rewrite.ts` — query rewrite helper for follow-up questions.
+- `lib/rag/generate.ts` — grounded answer generation.
+- `app/api/support/route.ts` — API orchestration, validation, rate limiting, guardrails, and fallback behavior.
+- `content/knowledge/` — approved Markdown knowledge base.
 
-export interface SupportAnswer {
-  answer: string;
-  grounded: boolean;       // false only when the fallback fired
-  sources: SourceCitation[];
-}
-```
+## Security and reliability rules
 
-## 8. Supabase database schema
+- OpenAI credentials stay server-only.
+- Client code never calls OpenAI directly.
+- Runtime retrieval is read-only.
+- The chatbot must not claim to access or update a real S.C.O.R.E. account.
+- The chatbot must not invent unconfirmed product details.
+- API failures return a safe browser response and log only non-secret diagnostic information.
 
-```sql
-create extension if not exists vector;
+## Evaluation
 
-create table document_chunks (
-  id text primary key,
-  source_path text not null,
-  category text not null,
-  title text not null,
-  chunk_index integer not null,
-  content text not null,
-  token_count integer not null,
-  embedding vector(512),           -- dimension must match VOYAGE_EMBEDDING_MODEL (see §14 note)
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index document_chunks_embedding_idx
-  on document_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
-
-create index document_chunks_source_path_idx on document_chunks (source_path);
-
-alter table document_chunks enable row level security;
--- No policies are created: the anon/authenticated roles get zero access.
--- Only the service-role key (used exclusively by the server) can read/write this table.
-```
-
-## 9. pgvector similarity-search function
-
-```sql
-create or replace function match_document_chunks (
-  query_embedding vector(512),
-  match_threshold float,
-  match_count int
-)
-returns table (
-  id text,
-  source_path text,
-  category text,
-  title text,
-  chunk_index int,
-  content text,
-  similarity float
-)
-language sql stable
-as $$
-  select
-    d.id,
-    d.source_path,
-    d.category,
-    d.title,
-    d.chunk_index,
-    d.content,
-    1 - (d.embedding <=> query_embedding) as similarity
-  from document_chunks d
-  where 1 - (d.embedding <=> query_embedding) > match_threshold
-  order by d.embedding <=> query_embedding
-  limit match_count;
-$$;
-```
-
-Called from `lib/rag/retrieve.ts` via `supabase.rpc('match_document_chunks', { query_embedding, match_threshold, match_count })` using the service-role client, server-side only. `match_count` is always clamped to `Math.min(requested, 4)` in TypeScript, not trusted from the caller.
-
-## 10. Chunking strategy
-
-- Split each Markdown file by heading boundaries (`##`/`###`) first — a chunk never straddles two unrelated topics.
-- Within a section, if content exceeds a token budget (~300–400 tokens), sub-split by paragraph group. No overlap between sub-splits for v0: the knowledge base is short, curated FAQ-style content, not long narrative prose, so context loss at a split boundary is a non-issue.
-- Sections under ~20 tokens (e.g. a stray heading with one short sentence) are merged into the following section rather than embedded as their own near-empty chunk.
-- Each chunk retains `sourcePath`, `category` (from the folder), `title` (from frontmatter or the nearest heading), and `chunkIndex`.
-- Implemented as a pure function (`lib/rag/chunk.ts`) that takes a Markdown string and returns `DocumentChunk[]` with no embedding — fully unit-testable without any network access.
-
-## 11. Metadata strategy
-
-Each Markdown file carries frontmatter:
-
-```md
----
-title: "What is inventory tracking?"
-category: inventory
-confirmed: true
----
-```
-
-- `category` must be one of the 8 approved categories; ingestion fails the entire run on an unrecognized value rather than skipping it silently.
-- `confirmed: true` is required before a file is eligible for ingestion — this enforces CLAUDE.md's "never invent unconfirmed features" rule at the content layer, not only in the model prompt.
-- Only `source_path`, `category`, `title`, `chunk_index` are stored as metadata alongside the embedding — no user data, no PII, ever.
-- The `limitations` category is deliberately authored to contain the exact CLAUDE.md fallback sentence ("I don't have confirmed information about that feature yet...") for topics like pricing, tax, hardware, and integrations. It's reachable two ways: through normal similarity search like any other content (a question whose embedding lands close enough to a limitations heading), or, when normal retrieval finds nothing at all, as the route's evidence of last resort via `retrieveChunksBySourcePath("limitations/unsupported-features.md")` (`lib/rag/retrieve.ts`), which fetches every chunk in that file directly and hands it to `generateAnswer`. There is no separate keyword-based guardrail for this anymore — `lib/rag/guardrails.ts` only handles sensitive-data, real-account, and legal-financial-advice, all of which are refusals with no knowledge-base content to ground against. Because the limitations doc never contains a specific price, device, or integration name, the model can't invent one even when it's the only evidence given — see §13.
-
-## 12. Citation strategy
-
-- Every chunk passed to Claude carries `title` + `category`; nothing else identifying is exposed.
-- After generation, the route returns the **distinct** `{title, category}` pairs for chunks that were actually included in the prompt — derived from the retrieval step, never requested from or trusted in Claude's free-text output.
-- `source_path` (the internal file path) is never sent to the client — only the human-readable `title`.
-- If the fallback fires, `sources` is an empty array and `grounded` is `false`, so the UI can render "no confirmed source" state distinctly from a grounded answer.
-
-## 13. Fallback behavior
-
-- The exact fixed string is defined once, in `lib/rag/fallback.ts`. It's a last resort, not the primary "unconfirmed topic" response — see the next point.
-- **Every question gets a real, generated answer, grounded in real content, under normal operation.** When the normal embed → retrieve → threshold pipeline finds zero passing chunks, the route re-grounds on the limitations doc (§5 step 6, §11) and still calls `generateAnswer` rather than returning the fixed string. The user should never see the literal fixed sentence during normal operation, whatever they ask.
-- The fixed string fires **verbatim, with no LLM call**, only when: (a) the limitations content itself can't be retrieved (Supabase error or the file has no rows), or (b) any step (rewrite/embed/retrieve/generate) throws even after a retry. Both are true failure conditions, not "the question was about an unconfirmed topic."
-- Because the limitations doc never contains a specific price, device, or integration name, generating from it can't invent one — the non-invention guarantee holds regardless of which evidence set (confirmed features vs. limitations) was used.
-- Every OpenAI/Supabase call in the route (rewrite, embed, retrieve, the limitations fallback retrieval, generate) is wrapped in `lib/rag/withRetry.ts`, which retries once after a short delay before giving up. This exists because this environment has observed transient connection resets/timeouts to both APIs that a single retry usually recovers from — without it, a lone flaky call would show the fallback for a question the pipeline could otherwise have answered correctly.
-- Any thrown error that survives the retry is caught server-side, logged internally (server console/log, not returned to the client), and degrades to the same fixed fallback response — the user never sees a stack trace or raw error.
-
-## 14. Security risks
-
-- **Prompt injection via the user's question**: the question is only ever used as (a) embedding input and (b) the user-turn of the Claude prompt. The system prompt explicitly instructs Claude to treat any instruction-like text inside the question or the retrieved evidence as inert content, never as new instructions.
-- **Prompt injection via the knowledge base**: lower risk since content is maintainer-authored and gated by `confirmed: true`, but ingestion still only reads from the repo's `content/knowledge/` tree — no upload path, no crawling, matching the brief's restrictions.
-- **Secret exposure**: `VOYAGE_API_KEY` and the Supabase **service-role** key are high-value secrets. They must only be read in `lib/clients/*.ts` and `scripts/ingest-knowledge.ts`, never in any `"use client"` file, and never prefixed `NEXT_PUBLIC_`. Same rule already applies to `ANTHROPIC_API_KEY` per CLAUDE.md §5.
-- **Threshold miscalibration**: too low a `RAG_SIMILARITY_THRESHOLD` lets marginally-relevant chunks into context, risking off-topic or subtly-wrong answers. Mitigated by a conservative default and the eval strategy in §15.
-- **Denial-of-wallet**: no rate limiting exists yet on `/api/support`. Flagged here as a known gap to address in the implementation prompt (e.g. basic per-IP throttling) — not solved by this plan.
-- **Data sensitivity**: `document_chunks` holds only public, curated product-knowledge text — no user or business PII — but RLS with zero public policies is still applied as defense in depth.
-- **Model/dimension drift**: the Voyage embedding model and the `vector(N)` column dimension must stay in lockstep. Pin the model name in one place (`lib/clients/voyage.ts`) and treat any model change as requiring a new migration, not a silent runtime change.
-
-## 15. RAG evaluation strategy
-
-- A fixed **golden question set** (the 5 example questions from the brief, plus deliberately out-of-scope questions like pricing, refunds, hardware compatibility) lives in `lib/rag/__fixtures__/golden-questions.ts`.
-- Layers testable without any live API call (consistent with CLAUDE.md's "prefer testing deterministic logic over mocking the Claude API extensively"):
-  - `chunk.ts` — given sample Markdown, assert expected chunk boundaries and counts.
-  - `validate.ts` — reject empty/whitespace/oversized input.
-  - Threshold filtering — given mocked retrieval results with known similarity scores, assert correct pass/fail.
-  - Fallback short-circuit — given zero passing chunks, assert the Claude client is never invoked (spy/mock at the `lib/clients/anthropic.ts` boundary).
-  - Citation assembly — given a set of chunks, assert correct de-duplication into `sources`.
-- Route-level tests mock `lib/clients/{voyage,supabase,anthropic}.ts` at the boundary and assert the route's request/response contract and error handling — not the quality of Claude's prose.
-- **Manual eval** (not CI-blocking for v0): periodically run the golden question set against the live pipeline, human-review whether answers are correct and whether out-of-scope questions correctly trigger the fallback. Track results in a plain Markdown log rather than building a dashboard — appropriate for a v0 knowledge base of this size.
-
-## 16. Exact implementation order
-
-For the follow-up implementation prompt, in this order:
-
-1. Add `VOYAGE_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RAG_SIMILARITY_THRESHOLD`, `RAG_MAX_CHUNKS`, `VOYAGE_EMBEDDING_MODEL` placeholders to `.env.example`.
-2. Add `@supabase/supabase-js` as the only new dependency; call Voyage's REST embeddings endpoint directly via `fetch` in `lib/clients/voyage.ts` rather than adding an SDK, keeping new dependencies to the minimum the brief requires (per CLAUDE.md §3's "no additional dependencies without written justification").
-3. Write `lib/rag/types.ts`.
-4. Write `lib/rag/chunk.ts` + `chunk.test.ts` (pure, no network — buildable and testable first).
-5. Author the seed `content/knowledge/**/*.md` files covering the 8 categories and the 5 example questions.
-6. Write `lib/clients/voyage.ts`, `lib/clients/supabase.ts`, `lib/clients/anthropic.ts`.
-7. Write `supabase/migrations/0001_document_chunks.sql` (table, index, RLS, RPC function).
-8. Write `scripts/ingest-knowledge.ts` and add an `ingest` script to `package.json`.
-9. Write `lib/rag/validate.ts` + `validate.test.ts`.
-10. Write `lib/rag/embed.ts` (thin, mockable wrapper around the Voyage client).
-11. Write `lib/rag/retrieve.ts` (thin, mockable wrapper around the Supabase RPC call).
-12. Write `lib/rag/fallback.ts` and `lib/rag/generate.ts` + `generate.test.ts`, mocking the embed/retrieve/Claude boundaries.
-13. Write `app/api/support/route.ts` wiring validate → embed → retrieve → threshold → generate/fallback → JSON response, with its own tests.
-14. Manually run `npm run ingest` against a real (or local) Supabase project and validate retrieval quality against the golden question set.
-15. Wire the chat UI (built in a separate prompt) to call `/api/support` for free-form questions, keeping onboarding step logic on the deterministic client-side path.
-16. Update `CLAUDE.md` and `README.md` to describe the RAG architecture as implemented, once it's real rather than planned.
-
-## 17. Files that will be created or changed (future implementation prompt)
-
-**New:**
-`lib/rag/types.ts`, `lib/rag/chunk.ts` (+test), `lib/rag/validate.ts` (+test), `lib/rag/embed.ts`, `lib/rag/retrieve.ts`, `lib/rag/generate.ts` (+test), `lib/rag/fallback.ts`, `lib/clients/voyage.ts`, `lib/clients/supabase.ts`, `lib/clients/anthropic.ts`, `app/api/support/route.ts` (+test), `content/knowledge/**/*.md`, `scripts/ingest-knowledge.ts`, `supabase/migrations/0001_document_chunks.sql`.
-
-**Changed:**
-`.env.example` (new placeholders), `package.json` (new dependency + `ingest` script), `README.md` (setup instructions), `CLAUDE.md` (document the architecture once built).
-
-**Unchanged by this plan:** everything under `lib/onboarding/` and the deterministic onboarding UI — this plan touches only the free-form support path.
-
----
-
-No code was written and nothing was committed or pushed for this prompt, per instructions.
+Automated tests cover route behavior, retrieval validation, ingestion safety, guardrails, and golden-question routing with mocked boundaries. Manual quality checks are tracked in `docs/manual-evaluation-checklist.md`.

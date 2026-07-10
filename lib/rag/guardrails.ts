@@ -69,7 +69,7 @@ function containsCardLikeNumber(rawText: string): boolean {
 }
 
 /**
- * Three independent deterministic pre-checks run before embed/retrieve/
+ * Three independent deterministic pre-checks run before vector-store retrieve/
  * generate — a deterministic guarantee, not a prompt instruction, so it
  * can't be defeated by a cleverly worded question. Order reflects
  * priority when a question could plausibly match more than one category.

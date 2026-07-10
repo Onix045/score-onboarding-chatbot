@@ -10,7 +10,7 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
- * Retries a transient upstream call (OpenAI/Supabase) a small, fixed
+ * Retries a transient OpenAI call a small, fixed
  * number of times before giving up — this environment has been observed
  * to hit intermittent TLS/connection resets and timeouts that the
  * underlying SDK's own retry logic doesn't fully absorb, and a single

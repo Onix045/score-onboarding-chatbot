@@ -1,10 +1,10 @@
 import type { ChatMessage, QuickAction } from "./types";
+import { CHAT_BRAND } from "./brand";
 
 export const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  text:
-    "Welcome to S.C.O.R.E. I'm your setup guide. I can explain how S.C.O.R.E. works or help you practice your first setup. You don't need technical experience.",
+  text: CHAT_BRAND.welcomeText,
 };
 
 export const QUICK_ACTIONS: QuickAction[] = [

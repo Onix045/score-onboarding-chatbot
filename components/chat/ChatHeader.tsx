@@ -1,23 +1,32 @@
 import { CloseIcon, MinimizeIcon, RestartIcon } from "./icons";
+import { cx, getChatTheme } from "@/lib/chat/theme";
 
 interface ChatHeaderProps {
+  onClearHistory: () => void;
   onMinimize: () => void;
   onClose: () => void;
-  onRestart: () => void;
 }
 
-export function ChatHeader({ onMinimize, onClose, onRestart }: ChatHeaderProps) {
+export function ChatHeader({ onClearHistory, onMinimize, onClose }: ChatHeaderProps) {
+  const theme = getChatTheme();
+
   return (
-    <div className="flex items-center justify-between gap-2 rounded-t-2xl bg-cerulean-600 px-4 py-3 text-white sm:rounded-t-2xl">
+    <div
+      className={cx(
+        "flex items-center justify-between gap-2 rounded-t-2xl px-4 py-3 sm:rounded-t-2xl",
+        theme.colors.header
+      )}
+    >
       <div>
-        <h2 className="text-base font-semibold">S.C.O.R.E. Guide</h2>
-        <p className="text-xs text-cerulean-100">Here to help you get started</p>
+        <h2 className="text-base font-semibold">{theme.displayName}</h2>
+        <p className={cx("text-xs", theme.colors.headerSubtitle)}>{theme.subtitle}</p>
       </div>
       <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={onRestart}
-          aria-label="Restart conversation"
+          onClick={onClearHistory}
+          aria-label="Clear chat history"
+          title="Clear chat history"
           className="flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <RestartIcon className="h-4 w-4" />

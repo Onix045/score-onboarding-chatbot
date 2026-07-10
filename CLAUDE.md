@@ -36,7 +36,7 @@ When asked about anything unconfirmed, the assistant must still engage and answe
 - React
 - TypeScript (strict mode)
 - Tailwind CSS
-- OpenAI TypeScript SDK (`openai`) — used for both answer generation (chat completions) and embeddings
+- OpenAI TypeScript SDK (`openai`) — used for answer generation, query rewriting, and managed vector-store retrieval
 - Server-side Next.js API route (the LLM is never called from client code)
 - Vitest + React Testing Library
 - Vercel-compatible deployment
@@ -71,6 +71,7 @@ The chatbot must never:
 Environment rules:
 
 - `OPENAI_API_KEY` is server-only and must never be exposed to client-side code.
+- `OPENAI_VECTOR_STORE_ID` is server-only runtime configuration; support requests must not create vector stores.
 - Never use a `NEXT_PUBLIC_` prefix for the API key or any other secret.
 
 ## 6. Testing commands

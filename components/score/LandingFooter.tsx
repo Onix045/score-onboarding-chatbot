@@ -1,3 +1,5 @@
+import { MailIcon } from "./icons";
+
 const FOOTER_LINK_CLASS =
   "text-sm text-slate-500 transition hover:text-cerulean-600 dark:text-slate-400 dark:hover:text-cerulean-400";
 
@@ -24,7 +26,7 @@ export function LandingFooter() {
                 rel="noreferrer"
                 target="_blank"
               >
-                <i aria-hidden="true" className="bi bi-envelope text-lg" />
+                <MailIcon className="h-5 w-5" />
               </a>
             </div>
           </div>
@@ -81,10 +83,7 @@ export function LandingFooter() {
           <p className="text-xs text-slate-400 dark:text-slate-500">
             © {year} RURAL Technologies. All rights reserved.
           </p>
-          <div className="flex items-center gap-2">
-            <i aria-hidden="true" className="bi bi-globe2 text-sm text-slate-400 dark:text-slate-500" />
-            <span className="text-xs text-slate-400 dark:text-slate-500">English</span>
-          </div>
+          <span className="text-xs text-slate-400 dark:text-slate-500">Available in English</span>
         </div>
       </div>
     </footer>

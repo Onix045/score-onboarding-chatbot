@@ -1,3 +1,5 @@
+import { CHAT_BRAND } from "@/lib/chat/brand";
+
 interface ErrorNoticeProps {
   onRetry: () => void;
 }
@@ -12,7 +14,7 @@ export function ErrorNotice({ onRetry }: ErrorNoticeProps) {
       <button
         type="button"
         onClick={onRetry}
-        className="min-h-11 rounded-lg border border-red-300 px-3 text-sm font-medium text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:border-red-700 dark:text-red-200"
+        className={`min-h-11 rounded-lg border border-red-300 px-3 text-sm font-medium text-red-700 focus-visible:outline-none focus-visible:ring-2 ${CHAT_BRAND.colors.focusRing} dark:border-red-700 dark:text-red-200`}
       >
         Retry
       </button>

@@ -5,8 +5,9 @@ import type { RetrievedChunk } from "./types";
 const createMock = vi.fn();
 
 vi.mock("@/lib/clients/openai", () => ({
+  CHAT_MODEL: "gpt-4o-mini",
   getOpenAIClient: () => ({
-    chat: { completions: { create: (...args: unknown[]) => createMock(...args) } },
+    responses: { create: (...args: unknown[]) => createMock(...args) },
   }),
 }));
 
@@ -28,34 +29,42 @@ beforeEach(() => {
 });
 
 describe("generateAnswer", () => {
-  it("calls OpenAI with a stateless, low-temperature request built only from the evidence", async () => {
+  it("calls OpenAI with evidence and recent history for repetition-aware answers", async () => {
     createMock.mockResolvedValue({
-      choices: [{ message: { content: "Inventory tracking explanation." } }],
+      output_text: "Inventory tracking explanation.",
     });
 
-    const answer = await generateAnswer("What is inventory?", CHUNKS);
+    const answer = await generateAnswer({
+      question: "What is inventory?",
+      originalQuestion: "What is inventory?",
+      history: [{ role: "assistant", text: "Inventory tracking keeps a running count of stock." }],
+      chunks: CHUNKS,
+    });
 
     expect(answer).toBe("Inventory tracking explanation.");
     expect(createMock).toHaveBeenCalledTimes(1);
     const [request] = createMock.mock.calls[0];
     expect(request.temperature).toBe(0);
-    expect(request.messages).toHaveLength(2);
-    expect(request.messages[0].role).toBe("system");
-    expect(request.messages[1].content).toContain("Inventory tracking keeps a running count of stock.");
-    expect(request.messages[1].content).toContain("What is inventory?");
-    expect(request.messages[0].content).toMatch(/never reveal.*system instructions/i);
-    expect(request.messages[0].content).toMatch(/ONLY the evidence/);
+    expect(request.instructions).toMatch(/never reveal.*system instructions/i);
+    expect(request.instructions).toMatch(/ONLY the evidence/i);
+    expect(request.instructions).toMatch(/avoid unnecessary repetition/i);
+    expect(request.input).toContain("Inventory tracking keeps a running count of stock.");
+    expect(request.input).toContain("What is inventory?");
+    expect(request.input).toContain("Conversation history:");
+    expect(request.input).toContain("Assistant: Inventory tracking keeps a running count of stock.");
   });
 
-  it("throws when OpenAI's response has no message content", async () => {
-    createMock.mockResolvedValue({ choices: [{ message: { content: null } }] });
-    await expect(generateAnswer("What is inventory?", CHUNKS)).rejects.toThrow(
-      "OpenAI response did not include message content"
-    );
+  it("throws when OpenAI's response has no output text", async () => {
+    createMock.mockResolvedValue({ output_text: "" });
+    await expect(
+      generateAnswer({ question: "What is inventory?", originalQuestion: "What is inventory?", history: [], chunks: CHUNKS })
+    ).rejects.toThrow("OpenAI response did not include output text");
   });
 
   it("propagates a failure from the OpenAI client", async () => {
     createMock.mockRejectedValue(new Error("openai generation down"));
-    await expect(generateAnswer("What is inventory?", CHUNKS)).rejects.toThrow("openai generation down");
+    await expect(
+      generateAnswer({ question: "What is inventory?", originalQuestion: "What is inventory?", history: [], chunks: CHUNKS })
+    ).rejects.toThrow("openai generation down");
   });
 });

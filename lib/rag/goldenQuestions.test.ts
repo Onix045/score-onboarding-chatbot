@@ -5,14 +5,10 @@ import type { RetrievedChunk } from "@/lib/rag/types";
 import { ADVERSARIAL_QUESTIONS, POSITIVE_QUESTIONS, UNSUPPORTED_QUESTIONS } from "./__fixtures__/golden-questions";
 import { LEGAL_FINANCIAL_ADVICE_RESPONSE, REAL_ACCOUNT_RESPONSE } from "./guardrails";
 
-const embedQueryMock = vi.fn();
 const retrieveRelevantChunksMock = vi.fn();
 const retrieveChunksBySourcePathMock = vi.fn();
 const generateAnswerMock = vi.fn();
 
-vi.mock("@/lib/rag/embed", () => ({
-  embedQuery: (...args: unknown[]) => embedQueryMock(...args),
-}));
 vi.mock("@/lib/rag/retrieve", () => ({
   retrieveRelevantChunks: (...args: unknown[]) => retrieveRelevantChunksMock(...args),
   retrieveChunksBySourcePath: (...args: unknown[]) => retrieveChunksBySourcePathMock(...args),
@@ -68,11 +64,9 @@ function postRequest(question: string) {
 }
 
 beforeEach(() => {
-  embedQueryMock.mockReset();
   retrieveRelevantChunksMock.mockReset();
   retrieveChunksBySourcePathMock.mockReset();
   generateAnswerMock.mockReset();
-  embedQueryMock.mockResolvedValue([0.1, 0.2]);
   retrieveRelevantChunksMock.mockResolvedValue([]);
   retrieveChunksBySourcePathMock.mockResolvedValue(ALL_LIMITATIONS_CHUNKS);
   resetRateLimitStateForTests();
@@ -109,7 +103,12 @@ describe("golden questions — unsupported", () => {
         expect(payload.grounded).toBe(true);
         expect(payload.sources).toEqual([{ title: "Features we can't confirm yet", category: "limitations" }]);
         expect(retrieveChunksBySourcePathMock).toHaveBeenCalledWith("limitations/unsupported-features.md");
-        expect(generateAnswerMock).toHaveBeenCalledWith(question, ALL_LIMITATIONS_CHUNKS);
+        expect(generateAnswerMock).toHaveBeenCalledWith({
+          question,
+          originalQuestion: question,
+          history: [],
+          chunks: ALL_LIMITATIONS_CHUNKS,
+        });
       });
     } else {
       it(`gives the ${expectation} response for "${question}" without calling OpenAI`, async () => {
@@ -120,7 +119,7 @@ describe("golden questions — unsupported", () => {
         expect(payload.grounded).toBe(false);
         expect(payload.sources).toEqual([]);
         expect(payload.answer).toBe(EXPECTED_RESPONSE[expectation]);
-        expect(embedQueryMock).not.toHaveBeenCalled();
+        expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
         expect(generateAnswerMock).not.toHaveBeenCalled();
       });
     }
@@ -152,7 +151,12 @@ describe("golden questions — adversarial (should never leak instructions or in
     const payload = await response.json();
 
     expect(payload.grounded).toBe(true);
-    expect(generateAnswerMock).toHaveBeenCalledWith(PRICING_INJECTION_QUESTION, ALL_LIMITATIONS_CHUNKS);
+    expect(generateAnswerMock).toHaveBeenCalledWith({
+      question: PRICING_INJECTION_QUESTION,
+      originalQuestion: PRICING_INJECTION_QUESTION,
+      history: [],
+      chunks: ALL_LIMITATIONS_CHUNKS,
+    });
     expect(payload.answer).not.toMatch(/\$\d/);
   });
 

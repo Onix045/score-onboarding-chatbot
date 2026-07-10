@@ -1,25 +1,26 @@
 import { LandingFooter } from "./LandingFooter";
 import { LandingHeader } from "./LandingHeader";
+import { ArrowRightIcon, CartIcon, PackageIcon, TrendingUpIcon, TruckIcon } from "./icons";
 
 const FEATURES = [
   {
-    icon: "bi-box-seam",
+    icon: PackageIcon,
     title: "Inventory",
     description: "Track products, stock levels, and low-stock alerts in real time.",
   },
   {
-    icon: "bi-cart-check",
+    icon: CartIcon,
     title: "Sales & POS",
     description:
       "Ring up sales, take payments, and keep a clean order history, included free on every plan.",
   },
   {
-    icon: "bi-truck",
+    icon: TruckIcon,
     title: "Suppliers",
     description: "Manage vendors and contacts, and restock with confidence.",
   },
   {
-    icon: "bi-graph-up-arrow",
+    icon: TrendingUpIcon,
     title: "Reports",
     description: "See revenue, top sellers, and stock health at a glance.",
   },
@@ -27,7 +28,7 @@ const FEATURES = [
 
 const STATS = [
   { value: "4-in-1", label: "All-in-one toolkit" },
-  { value: "EN · ES", label: "Fully bilingual" },
+  { value: "24/7", label: "Setup guide chat" },
   { value: "$0", label: "Free to start" },
   { value: "30-day", label: "Free Pro trial" },
 ] as const;
@@ -69,10 +70,7 @@ export function ScoreDashboard() {
                 type="button"
               >
                 See All Plans
-                <i
-                  aria-hidden="true"
-                  className="bi bi-arrow-right text-sm transition group-hover:translate-x-0.5"
-                />
+                <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </button>
             </div>
 
@@ -115,7 +113,7 @@ export function ScoreDashboard() {
                   key={feature.title}
                 >
                   <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-cerulean-50 text-cerulean-600 dark:bg-cerulean-950/50 dark:text-cerulean-400">
-                    <i aria-hidden="true" className={`bi ${feature.icon} text-xl leading-none`} />
+                    <feature.icon className="h-5 w-5" />
                   </span>
                   <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">
                     {feature.title}

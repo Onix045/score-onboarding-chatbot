@@ -1,7 +1,6 @@
-import { getOpenAIClient } from "@/lib/clients/openai";
+import { CHAT_MODEL, getOpenAIClient } from "@/lib/clients/openai";
 import type { ChatHistoryTurn } from "./types";
 
-const CHAT_MODEL = "gpt-4o-mini";
 const MAX_OUTPUT_TOKENS = 200;
 
 const SYSTEM_PROMPT = `You rewrite a user's latest chat message into a single standalone question, using the conversation history only to resolve pronouns, ellipsis, and implicit references (for example "it", "that", "how do I do that").
@@ -22,7 +21,7 @@ function buildHistoryTranscript(history: ChatHistoryTurn[]): string {
 
 /**
  * Condenses (question, history) into one standalone question before the
- * unchanged embed/retrieve/generate pipeline runs on it. Only ever called
+ * vector-store retrieve/generate pipeline runs on it. Only ever called
  * when the client sends non-empty history — every other pipeline step
  * still only ever sees a single resolved question string, never raw
  * history.
@@ -30,22 +29,17 @@ function buildHistoryTranscript(history: ChatHistoryTurn[]): string {
 export async function rewriteQuestionWithHistory(question: string, history: ChatHistoryTurn[]): Promise<string> {
   const client = getOpenAIClient();
 
-  const response = await client.chat.completions.create({
+  const response = await client.responses.create({
     model: CHAT_MODEL,
-    max_completion_tokens: MAX_OUTPUT_TOKENS,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Conversation history:\n${buildHistoryTranscript(history)}\n\nLatest message: ${question}\n\nRewritten standalone question:`,
-      },
-    ],
+    instructions: SYSTEM_PROMPT,
+    input: `Conversation history:\n${buildHistoryTranscript(history)}\n\nLatest message: ${question}\n\nRewritten standalone question:`,
   });
 
-  const content = response.choices[0]?.message.content;
+  const content = response.output_text;
   if (!content) {
-    throw new Error("OpenAI response did not include message content");
+    throw new Error("OpenAI response did not include output text");
   }
 
   return content.trim();

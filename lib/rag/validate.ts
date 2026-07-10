@@ -1,7 +1,7 @@
 import type { ChatHistoryTurn } from "./types";
 
 export const MAX_QUESTION_LENGTH = 1000;
-export const MAX_HISTORY_TURNS = 6;
+export const MAX_HISTORY_TURNS = 24;
 
 export class QuestionValidationError extends Error {}
 
