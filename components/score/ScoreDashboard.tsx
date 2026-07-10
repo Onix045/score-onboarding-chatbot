@@ -1,6 +1,6 @@
 import { LandingFooter } from "./LandingFooter";
 import { LandingHeader } from "./LandingHeader";
-import { ArrowRightIcon, CartIcon, PackageIcon, TrendingUpIcon, TruckIcon } from "./icons";
+import { ArrowRightIcon, CartIcon, MailIcon, PackageIcon, TrendingUpIcon } from "./icons";
 
 const FEATURES = [
   {
@@ -11,13 +11,12 @@ const FEATURES = [
   {
     icon: CartIcon,
     title: "Sales & POS",
-    description:
-      "Ring up sales, take payments, and keep a clean order history, included free on every plan.",
+    description: "Practice recording sales and see how stock levels update after each sale.",
   },
   {
-    icon: TruckIcon,
-    title: "Suppliers",
-    description: "Manage vendors and contacts, and restock with confidence.",
+    icon: MailIcon,
+    title: "Customer records",
+    description: "Keep basic customer details organized so repeat visits are easier to handle.",
   },
   {
     icon: TrendingUpIcon,
@@ -27,10 +26,10 @@ const FEATURES = [
 ] as const;
 
 const STATS = [
-  { value: "4-in-1", label: "All-in-one toolkit" },
-  { value: "24/7", label: "Setup guide chat" },
-  { value: "$0", label: "Free to start" },
-  { value: "30-day", label: "Free Pro trial" },
+  { value: "4", label: "Core areas" },
+  { value: "3", label: "Starter steps" },
+  { value: "1", label: "Guided chat" },
+  { value: "0", label: "Setup jargon" },
 ] as const;
 
 export function ScoreDashboard() {
@@ -57,25 +56,25 @@ export function ScoreDashboard() {
               Run your whole small business in one place
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-pretty text-slate-200">
-              SCORE helps small businesses manage inventory, sales, suppliers, and reports,
-              simple, fast, and built to grow with you.
+              S.C.O.R.E. helps small businesses learn inventory, sales, customer records,
+              and reports with a friendly guide that explains one step at a time.
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-x-6 gap-y-4 sm:flex-row">
               <button className="btn-primary px-6 py-3 text-base" type="button">
-                Start Free Trial
+                Ask the Guide
               </button>
               <button
                 className="group inline-flex items-center gap-1.5 text-base font-medium text-white/85 transition hover:text-white"
                 type="button"
               >
-                See All Plans
+                View Features
                 <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </button>
             </div>
 
             <p className="mt-8 text-sm text-white/60">
-              30-day free trial · No credit card · Cancel anytime
+              Prototype onboarding experience for first-time S.C.O.R.E. users
             </p>
           </div>
         </section>
@@ -136,10 +135,10 @@ export function ScoreDashboard() {
               Ready to run your business smarter?
             </h2>
             <p className="mx-auto mt-3 max-w-md text-pretty text-slate-500 dark:text-slate-400">
-              Start free in minutes, upgrade to Pro when you&apos;re ready to grow.
+              Use the chat guide to learn the first setup steps without technical jargon.
             </p>
             <button className="btn-primary mt-8 px-6 py-3 text-base" type="button">
-              Start Free Trial
+              Ask the Guide
             </button>
           </div>
         </section>

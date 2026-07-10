@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { LaunchIcon, LogInIcon, MailIcon, MenuIcon } from "./icons";
+import { LaunchIcon, MailIcon, MenuIcon } from "./icons";
 
 const NAV_LINK_CLASS =
   "px-3 text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100";
@@ -37,12 +37,8 @@ export function LandingHeader() {
           <Link className={NAV_LINK_CLASS} href="#contact">
             Contact
           </Link>
-          <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
-          <button className="btn-secondary px-4" type="button">
-            Sign in
-          </button>
           <button className="btn-primary px-4" type="button">
-            Start Free Trial
+            Ask the Guide
           </button>
         </nav>
 
@@ -64,14 +60,7 @@ export function LandingHeader() {
           <div className="flex flex-col gap-1">
             <button className="btn-primary w-full justify-center" type="button">
               <LaunchIcon className="h-4 w-4" />
-              Start Free Trial
-            </button>
-            <button
-              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 dark:text-slate-200"
-              type="button"
-            >
-              <LogInIcon className="h-4 w-4 text-slate-400" />
-              Sign in
+              Ask the Guide
             </button>
             <Link
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 dark:text-slate-200"

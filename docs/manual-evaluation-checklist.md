@@ -9,7 +9,7 @@ deployed pipeline (real OpenAI credentials and vector store) to judge answer
 ## Desktop chat behavior
 
 - [ ] Chat launcher opens/minimizes/closes correctly
-- [ ] Restart clears the conversation back to the welcome message
+- [ ] Clear-history icon clears the conversation back to the welcome message
 - [ ] Quick action buttons send their label as a question
 - [ ] Long answers render without breaking layout
 
@@ -17,7 +17,7 @@ deployed pipeline (real OpenAI credentials and vector store) to judge answer
 
 - [ ] Chat panel fills the screen appropriately on a small viewport
 - [ ] On-screen keyboard doesn't obscure the input field
-- [ ] Sources line and "Not yet confirmed" tag remain readable at small widths
+- [ ] No noisy source labels or internal retrieval details appear in the chat UI
 
 ## Keyboard-only behavior
 
@@ -27,8 +27,8 @@ deployed pipeline (real OpenAI credentials and vector store) to judge answer
 
 ## Onboarding flow
 
-- [ ] Deterministic onboarding steps (once built) never call the LLM for progression/validation
-- [ ] Restart behavior resets onboarding state, not just chat messages
+- [ ] Deterministic onboarding steps never call the LLM for progression/validation
+- [ ] Clear-history behavior resets onboarding state, not just chat messages
 
 ## RAG — supported questions
 
@@ -37,8 +37,9 @@ against the live pipeline and judge:
 
 - [ ] Answer is accurate relative to `content/knowledge/`
 - [ ] Answer is short, plain, and jargon-free
-- [ ] Sources shown match the topic actually asked about
+- [ ] The visible answer stays simple while API-level source metadata remains available for debugging/evaluation
 - [ ] A vague follow-up ("How can I use it?" after asking about inventory) resolves to a grounded answer instead of the fallback
+- [ ] Conversation-control messages such as "good", "I know", and "don't repeat that" receive natural context-aware replies instead of repeating the previous answer
 
 ## RAG — unsupported questions
 

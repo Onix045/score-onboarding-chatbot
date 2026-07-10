@@ -20,7 +20,7 @@ Everything else is treated as unconfirmed. Questions about pricing, payments, ha
 3. If the message needs retrieval, query rewriting may produce a clearer standalone search query.
 4. `lib/rag/retrieve.ts` searches the configured OpenAI vector store with a score threshold and a hard result cap.
 5. Retrieved results are validated for required attributes: `sourcePath`, `category`, `title`, and content.
-6. `lib/rag/generate.ts` generates a concise answer from the retrieved evidence and returns source labels.
+6. `lib/rag/generate.ts` generates a concise answer from the retrieved evidence. The API can return source metadata, but the chat UI intentionally keeps sources hidden to avoid distracting first-time users.
 7. If supported evidence is unavailable, the route falls back to the approved limitations content or the fixed safe fallback sentence.
 
 Runtime requests require `OPENAI_VECTOR_STORE_ID`. They never create vector stores or mutate knowledge infrastructure.
@@ -66,6 +66,7 @@ Managed vector-store files are marked with:
 - `lib/clients/openai.ts` — OpenAI client, model constants, and vector-store ID helpers.
 - `lib/rag/ingest.ts` — OpenAI vector-store ingestion and replacement logic.
 - `lib/rag/retrieve.ts` — OpenAI vector-store search and metadata validation.
+- `lib/rag/intent.ts` — conversation-control detection for acknowledgements, repetition requests, and topic shifts.
 - `lib/rag/rewrite.ts` — query rewrite helper for follow-up questions.
 - `lib/rag/generate.ts` — grounded answer generation.
 - `app/api/support/route.ts` — API orchestration, validation, rate limiting, guardrails, and fallback behavior.

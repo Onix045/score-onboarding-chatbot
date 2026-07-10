@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Score",
+  title: "S.C.O.R.E. Onboarding Chatbot",
   description:
-    "SCORE helps small businesses manage inventory, sales, suppliers, and reports — simple, fast, and built to grow with you.",
+    "S.C.O.R.E. helps small businesses learn inventory, sales, customer records, and reports through a simple onboarding chatbot.",
   icons: {
     icon: "/favicon.png",
   },
@@ -30,7 +31,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
       </head>
       <body className="min-h-full flex flex-col antialiased">
         {children}

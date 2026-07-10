@@ -36,14 +36,14 @@ export function LandingFooter() {
               <h3 className={FOOTER_HEADING_CLASS}>Product</h3>
               <ul className="mt-3 space-y-2.5">
                 <li>
-                  <button className={FOOTER_LINK_CLASS} type="button">
-                    Sign in
-                  </button>
+                  <a className={FOOTER_LINK_CLASS} href="#features">
+                    Features
+                  </a>
                 </li>
                 <li>
-                  <button className={FOOTER_LINK_CLASS} type="button">
-                    Start Free Trial
-                  </button>
+                  <a className={FOOTER_LINK_CLASS} href="#contact">
+                    Ask the Guide
+                  </a>
                 </li>
               </ul>
             </div>
