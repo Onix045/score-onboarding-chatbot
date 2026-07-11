@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { UNSUPPORTED_FEATURE_FALLBACK } from "@/lib/rag/fallback";
+import { checkRuralContact } from "@/lib/rag/contact";
 import { generateAnswer } from "@/lib/rag/generate";
 import { checkGreeting } from "@/lib/rag/greeting";
 import { checkGuardrails } from "@/lib/rag/guardrails";
@@ -165,6 +166,12 @@ export async function POST(request: Request) {
   const guardrailMatch = checkGuardrails(validatedQuestion);
   if (guardrailMatch) {
     const response: SupportAnswer = { answer: guardrailMatch.response, grounded: false, sources: [] };
+    return NextResponse.json(response);
+  }
+
+  const ruralContact = checkRuralContact(validatedQuestion);
+  if (ruralContact) {
+    const response: SupportAnswer = { answer: ruralContact, grounded: false, sources: [] };
     return NextResponse.json(response);
   }
 

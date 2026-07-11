@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ACKNOWLEDGEMENT_RESPONSE, GREETING_RESPONSE, WELLBEING_RESPONSE } from "@/lib/rag/greeting";
+import {
+  ACKNOWLEDGEMENT_RESPONSE,
+  FAREWELL_RESPONSE,
+  GREETING_RESPONSE,
+  LIGHT_CHAT_RESPONSE,
+  WELLBEING_RESPONSE,
+} from "@/lib/rag/greeting";
+import { RURAL_CONTACT_RESPONSE } from "@/lib/rag/contact";
 import { CONVERSATION_CONTROL_RESPONSE } from "@/lib/rag/intent";
 import { resetRateLimitStateForTests } from "@/lib/rag/rateLimit";
 import { UNSUPPORTED_FEATURE_FALLBACK } from "@/lib/rag/fallback";
@@ -142,6 +149,89 @@ describe("POST /api/support", () => {
     expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
     expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
     expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("answers farewells without vector-store retrieval", async () => {
+    const response = await POST(
+      postRequest({
+        question: "bye, bot",
+        history: [
+          { role: "user", text: "How can I start?" },
+          { role: "assistant", text: "Try the practice setup flow." },
+        ],
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(FAREWELL_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("answers short joking or meta messages without guessing a product question", async () => {
+    const response = await POST(
+      postRequest({
+        question: "this is system words.",
+        history: [
+          { role: "user", text: "What is S.C.O.R.E.?" },
+          { role: "assistant", text: "S.C.O.R.E. helps small businesses run daily operations." },
+        ],
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(LIGHT_CHAT_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("returns Rural Technologies contact details without vector-store retrieval", async () => {
+    const response = await POST(
+      postRequest({
+        question: "wonderful. chatbot. for more detail, please give me contact info with rural",
+        history: [
+          { role: "user", text: "How can I start?" },
+          { role: "assistant", text: "Try the practice setup flow." },
+        ],
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe(RURAL_CONTACT_RESPONSE);
+    expect(payload.grounded).toBe(false);
+    expect(rewriteQuestionWithHistoryMock).not.toHaveBeenCalled();
+    expect(retrieveRelevantChunksMock).not.toHaveBeenCalled();
+    expect(generateAnswerMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps mixed acknowledgement plus product questions on the RAG path", async () => {
+    retrieveRelevantChunksMock.mockResolvedValue([CHUNK]);
+    generateAnswerMock.mockResolvedValue("Start with the practice setup flow.");
+    rewriteQuestionWithHistoryMock.mockResolvedValue("How can I start with S.C.O.R.E.?");
+
+    const history = [
+      { role: "user" as const, text: "What is S.C.O.R.E.?" },
+      { role: "assistant" as const, text: "S.C.O.R.E. helps small businesses run daily operations." },
+    ];
+    const response = await POST(postRequest({ question: "wonderful. how can I start?", history }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.answer).toBe("Start with the practice setup flow.");
+    expect(rewriteQuestionWithHistoryMock).toHaveBeenCalledWith("wonderful. how can I start?", history);
+    expect(retrieveRelevantChunksMock).toHaveBeenCalledWith({
+      query: "How can I start with S.C.O.R.E.?",
+      similarityThreshold: 0.35,
+      maxChunks: 4,
+    });
+    expect(generateAnswerMock).toHaveBeenCalled();
   });
 
   it("falls back to a grounded, limitations-based answer when zero chunks clear the threshold", async () => {

@@ -46,10 +46,66 @@ const ACKNOWLEDGEMENT_PHRASES = new Set([
   "got it",
   "i see",
   "understood",
+  "wonderful",
 ]);
 
 export const ACKNOWLEDGEMENT_RESPONSE =
   "Great. If you want to keep going, you can ask another question or try one of the setup practice options.";
+
+const FAREWELL_PHRASES = new Set([
+  "bye",
+  "bye bot",
+  "goodbye",
+  "good bye",
+  "see you",
+  "see you later",
+  "talk to you later",
+  "thats all",
+  "that is all",
+]);
+
+export const FAREWELL_RESPONSE =
+  "Goodbye! I'm here whenever you want help with S.C.O.R.E. again.";
+
+const LIGHT_CHAT_PHRASES = new Set([
+  "haha",
+  "ha ha",
+  "lol",
+  "lmao",
+  "jk",
+  "just kidding",
+  "kidding",
+  "only joking",
+  "i am joking",
+  "this is system words",
+  "system words",
+  "bot",
+  "chatbot",
+]);
+
+const PRODUCT_CONTEXT_WORDS = [
+  "score",
+  "inventory",
+  "sale",
+  "sales",
+  "customer",
+  "crm",
+  "report",
+  "reports",
+  "setup",
+  "start",
+  "product",
+  "price",
+  "pricing",
+  "payment",
+  "account",
+  "rural",
+  "contact",
+  "email",
+];
+
+export const LIGHT_CHAT_RESPONSE =
+  "No worries. You can ask me about setup, inventory, sales, customers, reports, or anything else you want to understand about S.C.O.R.E.";
 
 function normalizeForGreetingMatch(text: string): string {
   return text
@@ -71,5 +127,14 @@ export function checkGreeting(question: string): string | null {
   if (WELLBEING_PHRASES.has(normalized)) return WELLBEING_RESPONSE;
   if (THANKS_PHRASES.has(normalized)) return THANKS_RESPONSE;
   if (ACKNOWLEDGEMENT_PHRASES.has(normalized)) return ACKNOWLEDGEMENT_RESPONSE;
+  if (FAREWELL_PHRASES.has(normalized)) return FAREWELL_RESPONSE;
+  if (LIGHT_CHAT_PHRASES.has(normalized)) return LIGHT_CHAT_RESPONSE;
+  if (
+    normalized.length <= 40 &&
+    /\b(haha|lol|lmao|jk|joking|kidding)\b/.test(normalized) &&
+    !PRODUCT_CONTEXT_WORDS.some((word) => normalized.includes(word))
+  ) {
+    return LIGHT_CHAT_RESPONSE;
+  }
   return null;
 }
